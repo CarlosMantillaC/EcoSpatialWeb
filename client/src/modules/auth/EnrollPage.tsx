@@ -22,12 +22,6 @@ const METHODS: MethodOption[] = [
       'Huella, rostro o PIN del equipo (Windows Hello, Touch ID, Android).',
   },
   {
-    id: 'phone',
-    label: 'Teléfono',
-    description:
-      'Usa la huella o PIN de tu móvil. Puede no estar disponible en Chrome/Linux.',
-  },
-  {
     id: 'securityKey',
     label: 'Llave de seguridad',
     description: 'Llave FIDO2 por USB o NFC (YubiKey u otra compatible).',
@@ -40,7 +34,7 @@ export function EnrollPage() {
 
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
-  const [method, setMethod] = useState<AuthenticatorMethod>('phone');
+  const [method, setMethod] = useState<AuthenticatorMethod>('device');
   const [platformAvailable, setPlatformAvailable] = useState<boolean | null>(
     null,
   );
@@ -54,7 +48,7 @@ export function EnrollPage() {
     void isPlatformAuthenticatorAvailable().then((available) => {
       if (!active) return;
       setPlatformAvailable(available);
-      setMethod(available ? 'device' : 'phone');
+      if (!available) setMethod('securityKey');
     });
     return () => {
       active = false;
@@ -123,8 +117,8 @@ export function EnrollPage() {
         {supported && platformAvailable === false && (
           <p className="mb-4 rounded-xl bg-sky-50 p-3 text-sm text-sky-800 dark:bg-sky-950/40 dark:text-sky-300">
             Tu navegador/sistema no expone un autenticador local de huella o PIN
-            (habitual en Chrome sobre Linux). Usa un telefono, una llave de
-            seguridad o el acceso de demostracion desde el login.
+            (habitual en Chrome sobre Linux). Usa una llave de seguridad o el
+            acceso de demostracion desde el login.
           </p>
         )}
 
