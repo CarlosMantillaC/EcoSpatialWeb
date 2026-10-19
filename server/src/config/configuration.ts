@@ -8,6 +8,8 @@ export interface AppConfig {
     user: string;
     password: string;
     name: string;
+    ssl: boolean;
+    synchronize: boolean;
   };
   jwt: {
     secret: string;
@@ -41,6 +43,13 @@ export default (): AppConfig => ({
     user: process.env.DB_USER ?? 'ecospatial',
     password: process.env.DB_PASSWORD ?? 'ecospatial',
     name: process.env.DB_NAME ?? 'ecospatial',
+    ssl:
+      (process.env.DB_SSL ??
+        String(Boolean(process.env.DATABASE_URL))) === 'true',
+    synchronize:
+      process.env.DB_SYNCHRONIZE !== undefined
+        ? process.env.DB_SYNCHRONIZE === 'true'
+        : (process.env.NODE_ENV ?? 'development') !== 'production',
   },
   jwt: {
     secret: process.env.JWT_SECRET ?? 'dev-secret-change-me',

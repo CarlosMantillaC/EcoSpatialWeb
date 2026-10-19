@@ -33,7 +33,8 @@ import { VehiclesModule } from './modules/vehicles/vehicles.module';
                 database: db.name,
               }),
           autoLoadEntities: true,
-          synchronize: config.get<string>('nodeEnv') !== 'production',
+          ssl: db.ssl ? { rejectUnauthorized: false } : false,
+          synchronize: db.synchronize,
         };
       },
     }),
