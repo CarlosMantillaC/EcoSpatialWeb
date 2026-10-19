@@ -1,0 +1,24 @@
+{
+  "name": "ecospatial-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Plataforma logistica de enrutamiento sostenible con control HCI por voz y autenticacion biometrica",
+  "workspaces": [
+    "client",
+    "server"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,client -c blue,green \"npm run start:dev -w server\" \"npm run dev -w client\"",
+    "build": "npm run build -w server && npm run build -w client",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

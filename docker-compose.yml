@@ -1,0 +1,21 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: ecospatial-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-ecospatial}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-ecospatial}
+      POSTGRES_DB: ${DB_NAME:-ecospatial}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - ecospatial_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-ecospatial} -d ${DB_NAME:-ecospatial}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  ecospatial_pgdata:
