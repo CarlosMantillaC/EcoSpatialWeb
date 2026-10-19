@@ -43,7 +43,6 @@ services:
   - type: web
     name: ecospatial-web
     runtime: static
-    plan: free
     buildCommand: npm install --include=dev && npm run build -w client
     staticPublishPath: client/dist
     envVars:
