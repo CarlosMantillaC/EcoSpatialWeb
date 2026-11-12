@@ -165,21 +165,22 @@ EcoSpatialWeb/
 
 ## Despliegue en Render (plan gratuito)
 
-El repositorio incluye `render.yaml`, un Blueprint que aprovisiona **de una sola vez** la base de datos PostgreSQL, la API NestJS y el frontend Vite como Static Site.
+El repositorio incluye `render.yaml`, un Blueprint que aprovisiona **de una sola vez** la API NestJS y el frontend Vite como Static Site. La base de datos PostgreSQL vive en **Neon** (free tier) y se conecta vía `DATABASE_URL`.
 
-1. En [Render](https://render.com) elige **New → Blueprint** y conecta este repositorio.
-2. Render leerá `render.yaml` y creará:
-   - `ecospatial-db` (PostgreSQL free).
+1. Crea un proyecto en [Neon](https://neon.tech) y copia su connection string.
+2. En [Render](https://render.com) elige **New → Blueprint** y conecta este repositorio.
+3. Render leerá `render.yaml` y creará:
    - `ecospatial-api` (Web Service free) en `https://ecospatial-api.onrender.com`.
    - `ecospatial-web` (Static Site free) en `https://ecospatial-web.onrender.com`.
-3. Confirma y espera el primer despliegue.
+4. En `ecospatial-api` → **Environment**, define `DATABASE_URL` con la connection string de Neon (Render lo pide al sincronizar porque usa `sync: false`).
+5. Confirma y espera el primer despliegue.
 
 Después del primer deploy, verifica que `WEBAUTHN_RP_ID` y `WEBAUTHN_ORIGIN` de `ecospatial-api` coincidan con el dominio real del Static Site (Render añade sufijos si el nombre está ocupado).
 
 Notas del plan gratuito:
 
 - El Web Service **se suspende** tras ~15 min de inactividad (el primer request tarda en despertar). El Static Site no se suspende.
-- La base de datos free **expira a los 90 días**.
+- La base de datos de Neon no expira; su compute free se suspende por inactividad y despierta solo.
 - `DB_SYNCHRONIZE=true` crea las tablas al arrancar; para producción real conviene usar migraciones TypeORM.
 - Mantén **una sola instancia** del Web Service: los challenges de WebAuthn viven en memoria.
 - `WEBAUTHN_RP_ID` debe ser el subdominio del frontend (`onrender.com` está en la Public Suffix List, no puede usarse como RP ID).
