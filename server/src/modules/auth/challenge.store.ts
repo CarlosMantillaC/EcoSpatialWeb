@@ -8,6 +8,7 @@ export interface ChallengeEntry {
   type: ChallengeType;
   userId?: string;
   email?: string;
+  name?: string;
   expiresAt: number;
 }
 

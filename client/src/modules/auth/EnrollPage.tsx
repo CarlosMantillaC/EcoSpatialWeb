@@ -40,6 +40,7 @@ export function EnrollPage() {
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [emailTaken, setEmailTaken] = useState(false);
 
   const supported = isWebAuthnSupported();
 
@@ -58,6 +59,7 @@ export function EnrollPage() {
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
+    setEmailTaken(false);
 
     if (!email.trim() || !name.trim()) {
       setError('Completa el nombre y el correo.');
@@ -70,7 +72,13 @@ export function EnrollPage() {
       setSession(auth);
       navigate('/', { replace: true });
     } catch (err: any) {
-      if (err?.name === 'NotAllowedError') {
+      if (err?.response?.status === 409) {
+        setError(
+          err.response.data?.message ??
+            'Ya existe una cuenta registrada con ese correo.',
+        );
+        setEmailTaken(true);
+      } else if (err?.name === 'NotAllowedError') {
         setError('Registro cancelado o tiempo de espera agotado.');
       } else if (err?.name === 'InvalidStateError') {
         setError('Este dispositivo ya tiene una credencial registrada.');
@@ -191,7 +199,15 @@ export function EnrollPage() {
 
         {error && (
           <p className="mb-4 rounded-xl bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">
-            {error}
+            {error}{' '}
+            {emailTaken && (
+              <Link
+                to="/login"
+                className="font-semibold underline hover:no-underline"
+              >
+                Inicia sesion
+              </Link>
+            )}
           </p>
         )}
 

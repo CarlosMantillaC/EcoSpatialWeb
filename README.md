@@ -51,6 +51,8 @@ npm run dev
 3. El navegador pedirá la verificación correspondiente.
 4. A partir de ahí, el botón **Ingresar con biometría** abre el panel logístico sin contraseña.
 
+> **Cada correo crea un solo perfil.** Si el correo ya está registrado, el registro responde **409** y puedes iniciar sesión; desde el panel, **Agregar dispositivo** vincula un segundo autenticador a tu perfil (la sesión es obligatoria, nadie puede tocar tu perfil desde el registro).
+
 > WebAuthn requiere un *secure context*. `http://localhost` se considera seguro, por lo que funciona en desarrollo sin HTTPS.
 
 #### Soporte por plataforma
@@ -113,8 +115,9 @@ El micrófono se procesa localmente con la Web Speech API (`es-ES`). El dicciona
 
 | Método | Ruta | Descripción |
 |---|---|---|
-| POST | `/api/auth/register/options` | Genera opciones WebAuthn de registro (`method`: `device`, `phone`, `securityKey`) |
-| POST | `/api/auth/register/verify` | Verifica registro y emite JWT |
+| POST | `/api/auth/register/options` | Genera opciones WebAuthn de registro (`method`: `device`, `phone`, `securityKey`). Responde **409** si el correo ya está registrado |
+| POST | `/api/auth/register/verify` | Verifica registro, crea el perfil y emite JWT |
+| POST | `/api/auth/devices/options` | Agrega un segundo dispositivo al perfil autenticado (JWT) |
 | POST | `/api/auth/login/options` | Opciones de autenticación (con o sin correo) |
 | POST | `/api/auth/login/verify` | Verifica firma biométrica y emite JWT |
 | GET | `/api/auth/config` | Indica si el acceso demo está habilitado |

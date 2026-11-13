@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   UnauthorizedException,
@@ -7,6 +8,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
+import { randomUUID } from 'crypto';
 import { Repository } from 'typeorm';
 import {
   generateAuthenticationOptions,
@@ -21,7 +23,10 @@ import type {
 } from '@simplewebauthn/server';
 import { Credential } from '../../entities/credential.entity';
 import { User } from '../../entities/user.entity';
-import { UsersService } from '../users/users.service';
+import {
+  normalizeEmail,
+  UsersService,
+} from '../users/users.service';
 import { ChallengeStore } from './challenge.store';
 
 function toBase64Url(bytes: Uint8Array): string {
@@ -92,10 +97,114 @@ export class AuthService {
     name: string,
     method: AuthenticatorMethod = 'device',
   ) {
-    let user = await this.usersService.findByEmailWithCredentials(email);
+    const existing = await this.usersService.findByEmail(email);
+    if (existing) {
+      throw new ConflictException(
+        'Ya existe una cuenta registrada con ese correo. Inicia sesion para agregar un dispositivo.',
+      );
+    }
+
+    // El perfil se crea recien en verifyRegistration: si el usuario cancela
+    // el dialogo WebAuthn no queda un perfil huerfano con el correo quemado.
+    const userId = randomUUID();
+
+    const options = await generateRegistrationOptions({
+      rpName: this.rpName,
+      rpID: this.rpId,
+      userID: new TextEncoder().encode(userId),
+      userName: normalizeEmail(email),
+      userDisplayName: name,
+      attestationType: 'none',
+      excludeCredentials: [],
+      authenticatorSelection: AUTHENTICATOR_SELECTION[method],
+      preferredAuthenticatorType: PREFERRED_AUTHENTICATOR[method],
+    });
+
+    const { flowId } = this.challengeStore.create({
+      challenge: options.challenge,
+      type: 'registration',
+      userId,
+      email: normalizeEmail(email),
+      name,
+    });
+
+    return { flowId, options };
+  }
+
+  async verifyRegistration(
+    flowId: string,
+    response: RegistrationResponseJSON,
+  ): Promise<AuthResult> {
+    const entry = this.safeConsume(flowId, 'registration');
+
+    const verification = await verifyRegistrationResponse({
+      response,
+      expectedChallenge: entry.challenge,
+      expectedOrigin: this.origin,
+      expectedRPID: this.rpId,
+      requireUserVerification: false,
+    });
+
+    if (!verification.verified || !verification.registrationInfo) {
+      throw new UnauthorizedException('Registro biometrico no verificado');
+    }
+
+    const { credential, credentialDeviceType, credentialBackedUp } =
+      verification.registrationInfo;
+
+    // Perfil nuevo y credencial se crean en la misma transaccion: si algo
+    // falla no queda un perfil sin dispositivo con el correo quemado.
+    const user = await this.credentialsRepository.manager.transaction(
+      async (manager) => {
+        let profile: User | null;
+        if (entry.email && entry.name) {
+          // Registro publico: crear el perfil nuevo (el constraint unique de
+          // la BD convierte una carrera entre registros en un 409).
+          profile = await this.usersService.create(
+            { id: entry.userId, email: entry.email, name: entry.name },
+            manager,
+          );
+        } else {
+          // Agregar dispositivo: el perfil ya existe y fue autenticado.
+          profile = await manager.getRepository(User).findOne({
+            where: { id: entry.userId! },
+          });
+          if (!profile) {
+            throw new UnauthorizedException('Usuario no encontrado');
+          }
+        }
+
+        const existing = await manager.getRepository(Credential).findOne({
+          where: { credentialID: credential.id },
+        });
+        if (!existing) {
+          await manager.getRepository(Credential).save(
+            manager.getRepository(Credential).create({
+              credentialID: credential.id,
+              publicKey: toBase64Url(credential.publicKey),
+              counter: String(credential.counter),
+              transports: credential.transports?.join(',') ?? null,
+              deviceType: credentialDeviceType,
+              backedUp: credentialBackedUp,
+              userId: profile.id,
+            }),
+          );
+        }
+
+        return profile;
+      },
+    );
+
+    return this.issueToken(user);
+  }
+
+  async addDeviceOptions(
+    userId: string,
+    method: AuthenticatorMethod = 'device',
+  ) {
+    const user = await this.usersService.findByIdWithCredentials(userId);
     if (!user) {
-      user = await this.usersService.create({ email, name });
-      user.credentials = [];
+      throw new UnauthorizedException('Usuario no encontrado');
     }
 
     const options = await generateRegistrationOptions({
@@ -119,55 +228,9 @@ export class AuthService {
       challenge: options.challenge,
       type: 'registration',
       userId: user.id,
-      email: user.email,
     });
 
     return { flowId, options };
-  }
-
-  async verifyRegistration(
-    flowId: string,
-    response: RegistrationResponseJSON,
-  ): Promise<AuthResult> {
-    const entry = this.safeConsume(flowId, 'registration');
-    const user = await this.usersService.findById(entry.userId!);
-    if (!user) {
-      throw new UnauthorizedException('Usuario no encontrado');
-    }
-
-    const verification = await verifyRegistrationResponse({
-      response,
-      expectedChallenge: entry.challenge,
-      expectedOrigin: this.origin,
-      expectedRPID: this.rpId,
-      requireUserVerification: false,
-    });
-
-    if (!verification.verified || !verification.registrationInfo) {
-      throw new UnauthorizedException('Registro biometrico no verificado');
-    }
-
-    const { credential, credentialDeviceType, credentialBackedUp } =
-      verification.registrationInfo;
-
-    const existing = await this.credentialsRepository.findOne({
-      where: { credentialID: credential.id },
-    });
-    if (!existing) {
-      await this.credentialsRepository.save(
-        this.credentialsRepository.create({
-          credentialID: credential.id,
-          publicKey: toBase64Url(credential.publicKey),
-          counter: String(credential.counter),
-          transports: credential.transports?.join(',') ?? null,
-          deviceType: credentialDeviceType,
-          backedUp: credentialBackedUp,
-          userId: user.id,
-        }),
-      );
-    }
-
-    return this.issueToken(user);
   }
 
   async authenticationOptions(email?: string) {
@@ -282,10 +345,17 @@ export class AuthService {
 
     let user = await this.usersService.findByEmail(email);
     if (!user) {
-      user = await this.usersService.create({
-        email,
-        name: name?.trim() || email.split('@')[0],
-      });
+      try {
+        user = await this.usersService.create({
+          email,
+          name: name?.trim() || email.split('@')[0],
+        });
+      } catch (error) {
+        // Carrera con otro registro simultaneo: reutilizar el perfil ganador.
+        if (!(error instanceof ConflictException)) throw error;
+        user = await this.usersService.findByEmail(email);
+        if (!user) throw error;
+      }
     }
 
     return this.issueToken(user);

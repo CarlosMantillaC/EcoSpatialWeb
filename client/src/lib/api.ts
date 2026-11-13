@@ -49,6 +49,12 @@ export const authApi = {
     api
       .post<AuthResponse>('/auth/register/verify', { flowId, response })
       .then((r) => r.data),
+  addDeviceOptions: (method: AuthenticatorMethod) =>
+    api
+      .post<{ flowId: string; options: any }>('/auth/devices/options', {
+        method,
+      })
+      .then((r) => r.data),
   loginOptions: (email?: string) =>
     api
       .post<{ flowId: string; options: any }>('/auth/login/options', { email })

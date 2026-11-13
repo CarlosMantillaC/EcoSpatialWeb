@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { LoginPage } from './modules/auth/LoginPage';
 import { EnrollPage } from './modules/auth/EnrollPage';
+import { AddDevicePage } from './modules/auth/AddDevicePage';
 import { ProtectedRoute } from './modules/auth/ProtectedRoute';
 import { useInactivityLogout } from './modules/auth/useInactivityLogout';
 import { DashboardPage } from './modules/dashboard/DashboardPage';
@@ -20,6 +21,14 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/enroll" element={<EnrollPage />} />
+      <Route
+        path="/devices"
+        element={
+          <ProtectedRoute>
+            <AddDevicePage />
+          </ProtectedRoute>
+        }
+      />
       <Route
         path="/"
         element={

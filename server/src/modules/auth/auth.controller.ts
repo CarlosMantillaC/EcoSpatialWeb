@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { AuthService } from './auth.service';
+import { AddDeviceOptionsDto } from './dto/add-device-options.dto';
 import { DevLoginDto } from './dto/dev-login.dto';
 import { LoginOptionsDto } from './dto/login-options.dto';
 import { LoginVerifyDto } from './dto/login-verify.dto';
@@ -31,6 +32,13 @@ export class AuthController {
   @Post('register/verify')
   verifyRegistration(@Body() dto: RegisterVerifyDto) {
     return this.authService.verifyRegistration(dto.flowId, dto.response as any);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('devices/options')
+  addDeviceOptions(@Req() request: Request, @Body() dto: AddDeviceOptionsDto) {
+    const user = request.user as { id: string };
+    return this.authService.addDeviceOptions(user.id, dto.method ?? 'device');
   }
 
   @Post('login/options')
