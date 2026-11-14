@@ -5,6 +5,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import configuration from './config/configuration';
 import { AuthModule } from './modules/auth/auth.module';
 import { DispatchModule } from './modules/dispatch/dispatch.module';
+import { EventsModule } from './modules/events/events.module';
 import { RoutingModule } from './modules/routing/routing.module';
 import { SimulatorModule } from './modules/simulator/simulator.module';
 import { UsersModule } from './modules/users/users.module';
@@ -44,6 +45,7 @@ import { VehiclesModule } from './modules/vehicles/vehicles.module';
     VehiclesModule,
     RoutingModule,
     DispatchModule,
+    EventsModule,
     SimulatorModule,
   ],
 })

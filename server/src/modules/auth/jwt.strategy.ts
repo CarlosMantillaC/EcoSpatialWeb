@@ -12,7 +12,13 @@ export interface JwtPayload {
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(config: ConfigService) {
     super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      jwtFromRequest: ExtractJwt.fromExtractors([
+        ExtractJwt.fromAuthHeaderAsBearerToken(),
+        // EventSource no puede enviar headers: el SSE pasa el token por
+        // query string (?token=...).
+        (req) =>
+          (req as { query?: { token?: string } })?.query?.token ?? null,
+      ]),
       ignoreExpiration: false,
       secretOrKey: config.get<string>('jwt.secret')!,
     });
