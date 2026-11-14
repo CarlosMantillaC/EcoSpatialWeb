@@ -24,6 +24,7 @@ export interface AppConfig {
   simulator: {
     enabled: boolean;
     intervalSeconds: number;
+    tripSeconds: number;
     vehicleCount: number;
     centerLat: number;
     centerLng: number;
@@ -65,10 +66,11 @@ export default (): AppConfig => ({
     (process.env.NODE_ENV ?? 'development') !== 'production',
   simulator: {
     enabled: (process.env.SIMULATOR_ENABLED ?? 'true') === 'true',
-    intervalSeconds: parseInt(process.env.SIMULATOR_INTERVAL_SECONDS ?? '15', 10),
+    intervalSeconds: parseInt(process.env.SIMULATOR_INTERVAL_SECONDS ?? '3', 10),
+    tripSeconds: parseInt(process.env.SIMULATOR_TRIP_SECONDS ?? '50', 10),
     vehicleCount: parseInt(process.env.SIMULATOR_VEHICLE_COUNT ?? '12', 10),
-    centerLat: parseFloat(process.env.SIMULATOR_CENTER_LAT ?? '-0.1807'),
-    centerLng: parseFloat(process.env.SIMULATOR_CENTER_LNG ?? '-78.4678'),
+    centerLat: parseFloat(process.env.SIMULATOR_CENTER_LAT ?? '7.889'),
+    centerLng: parseFloat(process.env.SIMULATOR_CENTER_LNG ?? '-72.4967'),
   },
   osrm: {
     baseUrl: process.env.OSRM_BASE_URL ?? 'https://router.project-osrm.org',

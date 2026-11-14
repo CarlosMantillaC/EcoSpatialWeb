@@ -1,6 +1,8 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { VehiclesService } from './modules/vehicles/vehicles.service';
+import { RoutingService } from './modules/routing/routing.service';
+import { randomWaypoint } from './modules/simulator/wander';
 import { VehicleStatus } from './entities/vehicle.entity';
 
 const DRIVERS = [
@@ -16,11 +18,26 @@ const DRIVERS = [
 
 const CARGOS = ['general', 'refrigerado', 'fragil', 'express', 'paqueteria'];
 
-const CENTER_LAT = parseFloat(process.env.SIMULATOR_CENTER_LAT ?? '-0.1807');
-const CENTER_LNG = parseFloat(process.env.SIMULATOR_CENTER_LNG ?? '-78.4678');
+const CENTER_LAT = parseFloat(process.env.SIMULATOR_CENTER_LAT ?? '7.889');
+const CENTER_LNG = parseFloat(process.env.SIMULATOR_CENTER_LNG ?? '-72.4967');
 
-function randomBetween(min: number, max: number) {
-  return Math.random() * (max - min) + min;
+/**
+ * Coloca el punto sobre la calle real mas cercana: pide una ruta corta
+ * a un destino cercano y toma su primer vertice (ya snapped por OSRM).
+ * Si OSRM falla, devuelve el punto original.
+ */
+async function snapToStreet(
+  routing: RoutingService,
+  point: { lat: number; lng: number },
+  center: { lat: number; lng: number },
+): Promise<{ lat: number; lng: number }> {
+  try {
+    const route = await routing.route(point, randomWaypoint(center, center, 0.3, 1));
+    const first = route.geometry.coordinates[0];
+    return { lng: first[0], lat: first[1] };
+  } catch {
+    return point;
+  }
 }
 
 async function bootstrap() {
@@ -38,15 +55,24 @@ async function bootstrap() {
   }
 
   const total = parseInt(process.env.SIMULATOR_VEHICLE_COUNT ?? '12', 10);
+  const center = { lat: CENTER_LAT, lng: CENTER_LNG };
+  const routing = app.get(RoutingService);
+
   for (let i = 0; i < total; i += 1) {
     const onRoute = Math.random() < 0.25;
+    // Punto aleatorio del area, luego "snapped" a la calle real mas
+    // cercana via OSRM (el primer vertice de una ruta corta). Si OSRM
+    // no responde se usa el punto tal cual.
+    const raw = randomWaypoint(center, center, 0, 4.5);
+    const position = await snapToStreet(routing, raw, center);
+
     await vehiclesService.create({
       plate: `PBA-${1000 + Math.floor(Math.random() * 9000)}`,
       driverName: DRIVERS[i % DRIVERS.length],
       cargoType: CARGOS[i % CARGOS.length],
       status: onRoute ? VehicleStatus.ON_ROUTE : VehicleStatus.FREE,
-      lat: CENTER_LAT + randomBetween(-0.04, 0.04),
-      lng: CENTER_LNG + randomBetween(-0.04, 0.04),
+      lat: position.lat,
+      lng: position.lng,
     });
   }
 
