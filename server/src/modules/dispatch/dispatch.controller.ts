@@ -21,10 +21,20 @@ export class DispatchController {
     return this.dispatchService.create(dto);
   }
 
+  @Post('preview')
+  preview(@Body() dto: CreateDispatchDto) {
+    return this.dispatchService.preview(dto);
+  }
+
   @Get()
   async findAll() {
     const dispatches = await this.dispatchService.findAll();
     return dispatches;
+  }
+
+  @Get('active')
+  findActive() {
+    return this.dispatchService.findActive();
   }
 
   @Get(':id')

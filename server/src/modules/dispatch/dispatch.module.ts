@@ -10,5 +10,6 @@ import { DispatchService } from './dispatch.service';
   imports: [TypeOrmModule.forFeature([Dispatch]), VehiclesModule, RoutingModule],
   controllers: [DispatchController],
   providers: [DispatchService],
+  exports: [DispatchService],
 })
 export class DispatchModule {}

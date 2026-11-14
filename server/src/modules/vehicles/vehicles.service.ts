@@ -56,6 +56,12 @@ export class VehiclesService {
     );
   }
 
+  async findFreeById(id: string): Promise<Vehicle | null> {
+    return this.vehiclesRepository.findOne({
+      where: { id, status: VehicleStatus.FREE },
+    });
+  }
+
   async setStatus(id: string, status: VehicleStatus): Promise<Vehicle> {
     return this.update(id, { status });
   }
