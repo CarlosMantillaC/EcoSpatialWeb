@@ -34,9 +34,9 @@ export class Vehicle {
   @Column({ name: 'cargo_type', type: 'text', nullable: true })
   cargoType?: string;
 
-  @UpdateDateColumn({ name: 'last_update' })
+  @UpdateDateColumn({ name: 'last_update', type: 'timestamptz' })
   lastUpdate: Date;
 
-  @CreateDateColumn({ name: 'created_at' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 }

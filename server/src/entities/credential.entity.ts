@@ -32,7 +32,7 @@ export class Credential {
   @Column({ name: 'backed_up', default: false })
   backedUp: boolean;
 
-  @CreateDateColumn({ name: 'created_at' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 
   @ManyToOne(() => User, (user) => user.credentials, { onDelete: 'CASCADE' })

@@ -23,6 +23,6 @@ export class User {
   })
   credentials: Credential[];
 
-  @CreateDateColumn({ name: 'created_at' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 }

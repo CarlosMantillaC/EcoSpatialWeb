@@ -47,6 +47,6 @@ export class Dispatch {
   @Column({ name: 'route_geometry', type: 'jsonb', nullable: true })
   routeGeometry?: any | null;
 
-  @CreateDateColumn({ name: 'created_at' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 }
