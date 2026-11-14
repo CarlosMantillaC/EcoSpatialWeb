@@ -42,3 +42,15 @@ body {
     box-shadow: 0 0 0 12px rgba(16, 185, 129, 0);
   }
 }
+
+/* Anillo pulsante del vehiculo seleccionado en el mapa */
+@keyframes vehicle-pulse {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(1.8);
+    opacity: 0;
+  }
+}
