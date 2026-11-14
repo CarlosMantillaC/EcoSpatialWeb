@@ -81,11 +81,18 @@ Con `DEV_LOGIN_ENABLED=true` (valor por defecto en `.env.example`) aparece en el
 
 ### Simulador de flota
 
-El backend siembra vehículos al arrancar (si la tabla está vacía) y mueve sus posiciones cada `SIMULATOR_INTERVAL_SECONDS` segundos. También puedes sembrar manualmente:
+El backend siembra vehículos al arrancar (si la tabla está vacía) y mueve sus posiciones cada `SIMULATOR_INTERVAL_SECONDS` segundos (por defecto 3). También puedes sembrar manualmente:
 
 ```bash
 npm run seed -w server
 ```
+
+**Viajes simulados y auto-completado:**
+
+- Cada despacho activo avanza por su ruta (geometría de OSRM) durante `SIMULATOR_TRIP_SECONDS` segundos (por defecto 50) y, al llegar al destino, el servicio se **completa automáticamente**: el despacho pasa a `completado` y el vehículo queda `libre`.
+- El progreso se calcula desde `createdAt` del despacho, sin estado adicional, así que sobrevive a reinicios del servidor.
+- El frontend lo recibe en tiempo real por **SSE** (`GET /api/events/dispatch`): posiciones, progreso y el evento `dispatch-completed`. Si el SSE se cae, el polling de 12 s actúa de respaldo.
+- Los vehículos sin despacho **deambulan por calles reales**: siguen rutas OSRM entre puntos aleatorios cercanos (~1–3 km) a velocidad urbana (~30–50 km/h) y se detienen unos segundos al llegar a cada destino. Nunca se mueven por encima de manzanas ni fuera de la red vial; si OSRM no responde, esperan quietos. Los `en_ruta` sembrados sin despacho son **tráfico de fondo** y nunca auto-completan.
 
 ## Comandos de voz
 
@@ -95,7 +102,7 @@ El micrófono se procesa localmente con la Web Speech API (`es-ES`). El dicciona
 |---|---|
 | "mostrar tráfico" / "ocultar tráfico" | Capa de tráfico simulada |
 | "modo oscuro" / "modo claro" | Tema de la interfaz |
-| "centrar mapa" | Vuelve a la coordenada base (Quito) |
+| "centrar mapa" | Vuelve a la coordenada base (Cúcuta) |
 | "acercar" / "alejar" | Zoom del mapa |
 | "mostrar disponibles" | Filtra vehículos `libre` |
 | "mostrar en ruta" | Filtra vehículos `en_ruta` |
@@ -105,11 +112,24 @@ El micrófono se procesa localmente con la Web Speech API (`es-ES`). El dicciona
 
 ## Despacho
 
-1. Haz clic en cualquier punto del mapa.
-2. El backend busca el vehículo `libre` más cercano (distancia haversine).
-3. Consulta OSRM para obtener distancia, ETA y la geometría de la ruta.
-4. Guarda el despacho, marca el vehículo `en_ruta` y el frontend dibuja la ruta.
-5. Desde el panel de despacho puedes **completar** el servicio (libera el vehículo).
+El flujo es de **dos pasos**, para que ningún vehículo quede `en ruta` sin un viaje aprobado:
+
+1. Haz clic en cualquier punto del mapa → se calcula una **vista previa** (`POST /api/dispatch/preview`): vehículo libre más cercano, distancia, ETA y trazado de ruta. **No se guarda nada ni cambia el estado de ningún vehículo.**
+2. Revisa la propuesta en el panel y pulsa **Aprobar viaje** (o **Descartar**).
+3. El backend revalida que el vehículo siga libre, consulta OSRM, guarda el despacho y marca el vehículo `en_ruta`.
+4. Desde el panel puedes **completar** el servicio (libera el vehículo) o **cancelar** el despacho (también lo libera).
+
+Mientras haya un despacho activo, nuevos clics en el mapa se bloquean con un aviso: primero completa o cancela el servicio actual.
+
+**Durante el viaje** el vehículo se desplaza sobre la ruta en tiempo real y puedes seguirlo en:
+
+- El **popup del marcador**: destino, conductor, barra de progreso y llegada estimada.
+- La sección **"En ruta · con despacho"** del panel Flota (clic en la fila → el mapa vuela al vehículo).
+- El **panel Despacho**: barra de progreso y segundos restantes.
+
+Al llegar al destino el servicio **se completa solo** y aparece el aviso "Servicio completado automáticamente". El botón **Completar** sigue disponible para cerrar el servicio antes de tiempo.
+
+> El botón **Ocultar ruta** y el comando de voz "limpiar pantalla" solo ocultan la ruta en pantalla; el despacho sigue activo y se puede completar, cancelar o volver a mostrar con **Mostrar ruta**.
 
 ## API principal
 
@@ -127,10 +147,14 @@ El micrófono se procesa localmente con la Web Speech API (`es-ES`). El dicciona
 | GET | `/api/vehicles?format=jsonld` | Flota serializada en JSON-LD |
 | POST | `/api/vehicles` | Crea vehículo |
 | PATCH | `/api/vehicles/:id` | Actualiza vehículo |
-| POST | `/api/dispatch` | Asigna el vehículo más cercano y traza ruta |
+| POST | `/api/dispatch/preview` | Vista previa: vehículo + ruta sin asignar ni guardar |
+| POST | `/api/dispatch` | Asigna el vehículo más cercano y traza ruta (`vehicleId` opcional) |
 | GET | `/api/dispatch` | Historial de despachos |
+| GET | `/api/dispatch/active` | Despachos activos con progreso y segundos restantes |
 | GET | `/api/dispatch/:id/jsonld` | Despacho en JSON-LD |
 | POST | `/api/dispatch/:id/complete` | Completa y libera el vehículo |
+| POST | `/api/dispatch/:id/cancel` | Cancela y libera el vehículo |
+| GET | `/api/events/dispatch` | Stream SSE: `fleet` (flota + progreso) y `dispatch-completed` |
 
 ## Estructura
 
@@ -139,7 +163,7 @@ EcoSpatialWeb/
 ├─ client/
 │  └─ src/
 │     ├─ components/          # Header, ThemeToggle
-│     ├─ lib/                 # api, webauthn
+│     ├─ lib/                 # api, webauthn, fleetStream (SSE)
 │     ├─ modules/
 │     │  ├─ auth/             # Login, Enroll, ProtectedRoute, inactividad
 │     │  ├─ dashboard/        # Paneles de flota y despacho
@@ -154,8 +178,9 @@ EcoSpatialWeb/
       │  ├─ users/
       │  ├─ vehicles/
       │  ├─ dispatch/
+      │  ├─ events/           # Stream SSE de estado de flota
       │  ├─ routing/          # Cliente OSRM
-      │  └─ simulator/        # Cron de telemetría simulada
+      │  └─ simulator/        # Movimiento de flota + auto-completado
       └─ semantic/            # JSON-LD
 ```
 
