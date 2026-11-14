@@ -93,6 +93,7 @@ npm run seed -w server
 - El progreso se calcula desde `createdAt` del despacho, sin estado adicional, así que sobrevive a reinicios del servidor.
 - El frontend lo recibe en tiempo real por **SSE** (`GET /api/events/dispatch`): posiciones, progreso y el evento `dispatch-completed`. Si el SSE se cae, el polling de 12 s actúa de respaldo.
 - Los vehículos sin despacho **deambulan por calles reales**: siguen rutas OSRM entre puntos aleatorios cercanos (~1–3 km) a velocidad urbana (~30–50 km/h) y se detienen unos segundos al llegar a cada destino. Nunca se mueven por encima de manzanas ni fuera de la red vial; si OSRM no responde, esperan quietos. Los `en_ruta` sembrados sin despacho son **tráfico de fondo** y nunca auto-completan.
+- **Geofence de Cúcuta**: la flota nunca sale del **perímetro urbano de Cúcuta** (polígono OSM "Perímetro Urbano Cúcuta", definido en `server/src/common/cucuta-boundary.ts`). Destinos aleatorios, rutas OSRM y posiciones se validan contra ese perímetro: una ruta que se salga se descarta y se sortea otra, y los vehículos que queden fuera del área se reubican solos dentro de Cúcuta. Los despachos creados desde el mapa solo aceptan destinos dentro del perímetro (el API responde `400` con un mensaje claro en otro caso), así que ningún vehículo aparece en Venezuela (San Antonio del Táchira / Ureña) ni en municipios vecinos.
 
 ## Comandos de voz
 

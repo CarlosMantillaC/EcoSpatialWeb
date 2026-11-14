@@ -1,6 +1,7 @@
 import { haversineKm } from '../../common/geo';
 import {
   randomWaypoint,
+  randomWaypointInside,
   wanderStep,
   WANDER_MAX_KM,
   WANDER_MIN_KM,
@@ -94,5 +95,56 @@ describe('randomWaypoint', () => {
       expect(Number.isFinite(point.lat)).toBe(true);
       expect(Number.isFinite(point.lng)).toBe(true);
     }
+  });
+});
+
+describe('randomWaypointInside', () => {
+  const origin = { lat: -0.18, lng: -78.48 };
+  const center = origin;
+
+  it('solo devuelve puntos que cumplen el predicado', () => {
+    // Solo se acepta el cuadrante sureste: con rand ciclico reintenta
+    // hasta encontrar un destino valido.
+    const inside = (p: { lat: number; lng: number }) =>
+      p.lat <= center.lat && p.lng >= center.lng;
+    for (const phase of [0, 1, 2]) {
+      // Secuencia determinista 0.1, 0.2, ... que varia el angulo y la
+      // distancia entre intentos.
+      let call = phase * 3;
+      const rand = () => ((call += 1) % 10) / 10;
+      const point = randomWaypointInside(
+        origin,
+        center,
+        WANDER_MIN_KM,
+        WANDER_MAX_KM,
+        inside,
+        rand,
+      );
+      expect(inside(point)).toBe(true);
+      const distance = haversineKm(origin, point);
+      expect(distance).toBeGreaterThanOrEqual(WANDER_MIN_KM - 0.05);
+      expect(distance).toBeLessThanOrEqual(WANDER_MAX_KM + 0.05);
+    }
+  });
+
+  it('si nada entra, se queda quieto en el origen', () => {
+    // Predicado imposible para destinos a 1-3 km pero cierto para el
+    // origen: mejor no moverse antes que salirse del area.
+    const inside = (p: { lat: number; lng: number }) =>
+      haversineKm(p, origin) < 0.1;
+    const point = randomWaypointInside(origin, center, 1, 3, inside, () => 0.5);
+    expect(point).toEqual(origin);
+  });
+
+  it('si ni el origen esta dentro, devuelve el centro', () => {
+    const point = randomWaypointInside(
+      origin,
+      center,
+      1,
+      3,
+      () => false,
+      () => 0.5,
+    );
+    expect(point).toEqual(center);
   });
 });

@@ -12,6 +12,10 @@ import {
 } from '../../entities/dispatch.entity';
 import { Vehicle, VehicleStatus } from '../../entities/vehicle.entity';
 import { Coords, positionAlongRoute } from '../../common/geo';
+import {
+  isInsideCucuta,
+  isRouteInsideCucuta,
+} from '../../common/cucuta-boundary';
 import { RoutingService } from '../routing/routing.service';
 import { VehiclesService } from '../vehicles/vehicles.service';
 import { CreateDispatchDto } from './dto/create-dispatch.dto';
@@ -57,6 +61,7 @@ export class DispatchService {
    */
   async preview(dto: CreateDispatchDto) {
     const target = { lat: dto.destLat, lng: dto.destLng };
+    this.assertDestinationInCucuta(target);
     const vehicle = await this.vehiclesService.findNearestFree(target);
     if (!vehicle) {
       throw new BadRequestException(
@@ -65,12 +70,13 @@ export class DispatchService {
     }
 
     const origin = { lat: vehicle.lat, lng: vehicle.lng };
-    const route = await this.routingService.route(origin, target);
+    const route = await this.routeInsideCucuta(origin, target, vehicle);
     return { vehicle, route };
   }
 
   async create(dto: CreateDispatchDto) {
     const target = { lat: dto.destLat, lng: dto.destLng };
+    this.assertDestinationInCucuta(target);
 
     // Prefiere el vehiculo de la vista previa si sigue libre; si otro
     // usuario lo tomo primero, asigna el mas cercano disponible.
@@ -97,7 +103,7 @@ export class DispatchService {
     }
 
     const origin = { lat: vehicle.lat, lng: vehicle.lng };
-    const route = await this.routingService.route(origin, target);
+    const route = await this.routeInsideCucuta(origin, target, vehicle);
 
     const dispatch = this.dispatchesRepository.create({
       originLat: origin.lat,
@@ -120,6 +126,39 @@ export class DispatchService {
       vehicle: await this.vehiclesService.findOne(vehicle.id),
       route,
     };
+  }
+
+  /** Ningun destino fuera del perimetro urbano de Cucuta. */
+  private assertDestinationInCucuta(target: Coords) {
+    if (!isInsideCucuta(target)) {
+      throw new BadRequestException(
+        'El destino debe estar dentro del perimetro urbano de Cucuta',
+      );
+    }
+  }
+
+  /**
+   * Geofence de Cucuta sobre el viaje completo: el origen debe estar
+   * dentro del perimetro y la ruta OSRM no puede salirse de el (p. ej.
+   * calles que cruzan la frontera con Venezuela).
+   */
+  private async routeInsideCucuta(
+    origin: Coords,
+    target: Coords,
+    vehicle: Vehicle,
+  ) {
+    if (!isInsideCucuta(origin)) {
+      throw new BadRequestException(
+        `El vehiculo ${vehicle.plate} esta fuera de Cucuta y no puede iniciar el viaje`,
+      );
+    }
+    const route = await this.routingService.route(origin, target);
+    if (!isRouteInsideCucuta(route.geometry.coordinates)) {
+      throw new BadRequestException(
+        'La ruta hacia el destino sale del area de Cucuta; elige otro destino',
+      );
+    }
+    return route;
   }
 
   findAll(): Promise<Dispatch[]> {

@@ -7,12 +7,22 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { Coords } from '../../common/geo';
+import {
+  isInsideCucuta,
+  isRouteInsideCucuta,
+} from '../../common/cucuta-boundary';
 import { Vehicle, VehicleStatus } from '../../entities/vehicle.entity';
 import { FleetEventsService } from '../events/fleet-events.service';
 import { DispatchService } from '../dispatch/dispatch.service';
 import { RoutingService } from '../routing/routing.service';
 import { VehiclesService } from '../vehicles/vehicles.service';
-import { randomWaypoint, wanderStep, type WanderState } from './wander';
+import {
+  randomWaypointInside,
+  wanderStep,
+  WANDER_MAX_KM,
+  WANDER_MIN_KM,
+  type WanderState,
+} from './wander';
 
 const DRIVERS = [
   'Ana Torres',
@@ -31,6 +41,12 @@ const INTERVAL_NAME = 'fleet-simulator';
 
 /** Peticiones OSRM de deambulacion simultaneas por tick (ritmo del demo). */
 const MAX_ROUTE_REQUESTS_PER_TICK = 2;
+
+/** Reintentos de destino si la ruta OSRM se sale del perimetro de Cucuta. */
+const ROUTE_ATTEMPTS = 3;
+
+/** Centro por defecto (Cucuta) si la configuracion esta fuera del perimetro. */
+const DEFAULT_CENTER: Coords = { lat: 7.889, lng: -72.4967 };
 
 /** Pausa "estacionado" tras llegar a un destino, en ticks. */
 const PAUSE_TICKS_MIN = 4;
@@ -51,6 +67,9 @@ export class SimulatorService implements OnModuleInit, OnModuleDestroy {
   private readonly pausedTicks = new Map<string, number>();
 
   private intervalSec = 3;
+
+  /** Aviso unico cuando el centro configurado esta fuera de Cucuta. */
+  private warnedCenterOutside = false;
 
   constructor(
     private readonly vehiclesService: VehiclesService,
@@ -98,9 +117,16 @@ export class SimulatorService implements OnModuleInit, OnModuleDestroy {
 
     for (let i = 0; i < total; i += 1) {
       const onRoute = Math.random() < 0.25;
-      // Punto aleatorio del area; luego queda "snapped" a una calle
-      // real en cuanto el simulador le asigna su primera ruta.
-      const point = randomWaypoint(center, center, 0, 4.5);
+      // Punto aleatorio del area (dentro del perimetro de Cucuta); luego
+      // queda "snapped" a una calle real en cuanto el simulador le asigna
+      // su primera ruta.
+      const point = randomWaypointInside(
+        center,
+        center,
+        0,
+        4.5,
+        isInsideCucuta,
+      );
       await this.vehiclesService.create({
         plate: `PBA-${1000 + Math.floor(Math.random() * 9000)}`,
         driverName: DRIVERS[i % DRIVERS.length],
@@ -171,6 +197,16 @@ export class SimulatorService implements OnModuleInit, OnModuleDestroy {
     }
 
     const step = wanderStep(state, this.intervalSec);
+
+    // Guarda final: ninguna posicion fuera del perimetro de Cucuta llega
+    // al frontend (p. ej. rutas heredadas que cruzan la frontera).
+    if (!isInsideCucuta(step.position)) {
+      this.wanderers.delete(vehicle.id);
+      const safe = this.randomPointInArea();
+      await this.vehiclesService.updatePosition(vehicle.id, safe);
+      return;
+    }
+
     await this.vehiclesService.updatePosition(vehicle.id, step.position);
 
     if (step.arrived) {
@@ -191,35 +227,60 @@ export class SimulatorService implements OnModuleInit, OnModuleDestroy {
     let from: Coords = { lat: vehicle.lat, lng: vehicle.lng };
 
     // Si el vehiculo quedo fuera del area de operacion (p. ej. flota de
-    // otra ciudad), se reubica dentro del area antes de trazar la ruta.
+    // otra ciudad o datos previos al geofence), se reubica dentro del
+    // perimetro de Cucuta antes de trazar la ruta.
     const MAX_RADIUS_DEG = 0.06;
     if (
+      !isInsideCucuta(from) ||
       Math.abs(from.lat - center.lat) > MAX_RADIUS_DEG ||
       Math.abs(from.lng - center.lng) > MAX_RADIUS_DEG
     ) {
-      from = randomWaypoint(center, center, 0, 4.5);
+      from = this.randomPointInArea();
       await this.vehiclesService.updatePosition(vehicle.id, from);
     }
 
-    const to = randomWaypoint(from, center);
-    try {
-      const route = await this.routingService.route(from, to);
-      return {
-        geometry: route.geometry.coordinates,
+    // El destino se descarta y se sortea de nuevo si la ruta real de
+    // OSRM se sale del perimetro (p. ej. calles que cruzan la frontera).
+    for (let attempt = 0; attempt < ROUTE_ATTEMPTS; attempt += 1) {
+      const to = randomWaypointInside(
         from,
-        to,
-        progress: 0,
-        durationSec: Math.max(route.durationMin * 60, 30),
-      };
-    } catch (error) {
-      // OSRM caido: el vehiculo espera quieto y se reintenta luego.
-      this.logger.warn(
-        `Sin ruta de deambulacion para ${vehicle.plate}: ${
-          (error as Error).message
-        }`,
+        center,
+        WANDER_MIN_KM,
+        WANDER_MAX_KM,
+        isInsideCucuta,
       );
-      return null;
+      try {
+        const route = await this.routingService.route(from, to);
+        if (!isRouteInsideCucuta(route.geometry.coordinates)) {
+          this.logger.warn(
+            `Ruta de deambulacion de ${vehicle.plate} sale de Cucuta; se reintenta`,
+          );
+          continue;
+        }
+        return {
+          geometry: route.geometry.coordinates,
+          from,
+          to,
+          progress: 0,
+          durationSec: Math.max(route.durationMin * 60, 30),
+        };
+      } catch (error) {
+        // OSRM caido: el vehiculo espera quieto y se reintenta luego.
+        this.logger.warn(
+          `Sin ruta de deambulacion para ${vehicle.plate}: ${
+            (error as Error).message
+          }`,
+        );
+        return null;
+      }
     }
+    return null;
+  }
+
+  /** Punto aleatorio dentro del perimetro de Cucuta, cerca del centro. */
+  private randomPointInArea(): Coords {
+    const center = this.center();
+    return randomWaypointInside(center, center, 0, 4.5, isInsideCucuta);
   }
 
   /**
@@ -254,17 +315,34 @@ export class SimulatorService implements OnModuleInit, OnModuleDestroy {
       }
 
       const position = this.dispatchService.positionOf(dispatch, progress);
+      // Guarda final: despachos heredados con ruta fuera de Cucuta no
+      // muestran el vehiculo fuera del perimetro; al completarse, el
+      // trafico de fondo lo reubica dentro del area.
+      if (!isInsideCucuta(position)) continue;
       await this.vehiclesService.updatePosition(vehicle.id, position);
     }
 
     return handled;
   }
 
+  /**
+   * Centro del area de operacion. El geofence es el perimetro urbano de
+   * Cucuta: si la configuracion apunta fuera de el, se usa el centro por
+   * defecto para que la flota nunca salga de Cucuta.
+   */
   private center(): Coords {
-    return {
-      lat: this.config.get<number>('simulator.centerLat') ?? 7.889,
-      lng: this.config.get<number>('simulator.centerLng') ?? -72.4967,
+    const configured: Coords = {
+      lat: this.config.get<number>('simulator.centerLat') ?? DEFAULT_CENTER.lat,
+      lng: this.config.get<number>('simulator.centerLng') ?? DEFAULT_CENTER.lng,
     };
+    if (isInsideCucuta(configured)) return configured;
+    if (!this.warnedCenterOutside) {
+      this.warnedCenterOutside = true;
+      this.logger.warn(
+        `SIMULATOR_CENTER fuera del perimetro de Cucuta (${configured.lat}, ${configured.lng}); se usa el centro por defecto`,
+      );
+    }
+    return DEFAULT_CENTER;
   }
 
   /** Emite el estado completo de flota a los clientes SSE. */

@@ -70,3 +70,26 @@ export function randomWaypoint(
     lng: clamp(origin.lng + dLng, center.lng),
   };
 }
+
+/**
+ * Como `randomWaypoint`, pero reintenta hasta que el punto cumple
+ * `isInside` (p. ej. estar dentro del perimetro urbano de Cucuta).
+ * Si tras todos los reintentos nada entra (origen pegado al borde),
+ * prefiere quedarse quieto en `origin` antes que salirse del area; si
+ * ni siquiera `origin` esta dentro, devuelve `center`.
+ */
+export function randomWaypointInside(
+  origin: Coords,
+  center: Coords,
+  minKm = WANDER_MIN_KM,
+  maxKm = WANDER_MAX_KM,
+  isInside: (point: Coords) => boolean = () => true,
+  rand: () => number = Math.random,
+  maxAttempts = 24,
+): Coords {
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const point = randomWaypoint(origin, center, minKm, maxKm, undefined, rand);
+    if (isInside(point)) return point;
+  }
+  return isInside(origin) ? origin : center;
+}

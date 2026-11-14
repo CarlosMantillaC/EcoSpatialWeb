@@ -2,7 +2,8 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { VehiclesService } from './modules/vehicles/vehicles.service';
 import { RoutingService } from './modules/routing/routing.service';
-import { randomWaypoint } from './modules/simulator/wander';
+import { randomWaypointInside } from './modules/simulator/wander';
+import { isInsideCucuta } from './common/cucuta-boundary';
 import { VehicleStatus } from './entities/vehicle.entity';
 
 const DRIVERS = [
@@ -32,9 +33,14 @@ async function snapToStreet(
   center: { lat: number; lng: number },
 ): Promise<{ lat: number; lng: number }> {
   try {
-    const route = await routing.route(point, randomWaypoint(center, center, 0.3, 1));
+    const route = await routing.route(
+      point,
+      randomWaypointInside(center, center, 0.3, 1, isInsideCucuta),
+    );
     const first = route.geometry.coordinates[0];
-    return { lng: first[0], lat: first[1] };
+    const snapped = { lng: first[0], lat: first[1] };
+    // El snap no puede sacar al vehiculo del perimetro de Cucuta.
+    return isInsideCucuta(snapped) ? snapped : point;
   } catch {
     return point;
   }
@@ -55,7 +61,16 @@ async function bootstrap() {
   }
 
   const total = parseInt(process.env.SIMULATOR_VEHICLE_COUNT ?? '12', 10);
-  const center = { lat: CENTER_LAT, lng: CENTER_LNG };
+  let center = { lat: CENTER_LAT, lng: CENTER_LNG };
+  if (!isInsideCucuta(center)) {
+    // El geofence es el perimetro urbano de Cucuta: fuera de el se usa
+    // el centro por defecto para no sembrar vehiculos fuera de Cucuta.
+    // eslint-disable-next-line no-console
+    console.warn(
+      'SIMULATOR_CENTER fuera del perimetro de Cucuta; se usa el centro por defecto',
+    );
+    center = { lat: 7.889, lng: -72.4967 };
+  }
   const routing = app.get(RoutingService);
 
   for (let i = 0; i < total; i += 1) {
@@ -63,7 +78,7 @@ async function bootstrap() {
     // Punto aleatorio del area, luego "snapped" a la calle real mas
     // cercana via OSRM (el primer vertice de una ruta corta). Si OSRM
     // no responde se usa el punto tal cual.
-    const raw = randomWaypoint(center, center, 0, 4.5);
+    const raw = randomWaypointInside(center, center, 0, 4.5, isInsideCucuta);
     const position = await snapToStreet(routing, raw, center);
 
     await vehiclesService.create({
