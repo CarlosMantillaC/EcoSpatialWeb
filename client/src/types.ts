@@ -42,6 +42,35 @@ export interface DispatchResponse {
   };
 }
 
+/** Resultado de POST /dispatch/preview: no toca estados ni guarda nada. */
+export interface DispatchPreview {
+  destination: LatLng;
+  vehicle: Vehicle;
+  route: {
+    distanceKm: number;
+    durationMin: number;
+    geometry: RouteGeometry;
+  };
+}
+
+/** Despacho activo enriquecido con progreso (GET /dispatch/active). */
+export interface ActiveDispatch {
+  dispatch: Dispatch;
+  vehicle: Vehicle;
+  /** Avance del viaje en [0, 1]. */
+  progress: number;
+  /** Segundos restantes del viaje simulado. */
+  remainingSec: number;
+  origin: LatLng;
+  destination: LatLng;
+}
+
+/** Payload del evento SSE `fleet`. */
+export interface FleetUpdate {
+  vehicles: Vehicle[];
+  activeDispatches: ActiveDispatch[];
+}
+
 export interface AuthUser {
   id: string;
   email: string;

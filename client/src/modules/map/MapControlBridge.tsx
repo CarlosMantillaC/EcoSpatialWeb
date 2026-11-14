@@ -11,6 +11,7 @@ export function MapControlBridge() {
       center: () => map.flyTo([BASE_COORDINATE.lat, BASE_COORDINATE.lng], BASE_ZOOM),
       zoomIn: () => map.zoomIn(),
       zoomOut: () => map.zoomOut(),
+      flyTo: (lat, lng, zoom = 15) => map.flyTo([lat, lng], zoom),
     });
     return () => setControls(null);
   }, [map, setControls]);

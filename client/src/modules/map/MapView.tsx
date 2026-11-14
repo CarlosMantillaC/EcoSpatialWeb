@@ -7,13 +7,15 @@ import { TrafficLayer } from './TrafficLayer';
 import { VehicleMarkers } from './VehicleMarkers';
 
 function DispatchClickHandler() {
-  const createDispatch = useFleetStore((state) => state.createDispatch);
+  const selectDestination = useFleetStore(
+    (state) => state.selectDestination,
+  );
   const loading = useFleetStore((state) => state.loading);
 
   useMapEvents({
     click(event) {
       if (loading) return;
-      void createDispatch(event.latlng.lat, event.latlng.lng);
+      void selectDestination(event.latlng.lat, event.latlng.lng);
     },
   });
 

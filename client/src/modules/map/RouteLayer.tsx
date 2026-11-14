@@ -14,27 +14,35 @@ const destinationIcon = L.divIcon({
 function FitRoute() {
   const map = useMap();
   const route = useFleetStore((state) => state.route);
+  const preview = useFleetStore((state) => state.preview);
+
+  const geometry = preview?.route.geometry ?? route;
 
   useEffect(() => {
-    if (!route || route.coordinates.length === 0) return;
+    if (!geometry || geometry.coordinates.length === 0) return;
     const bounds = L.latLngBounds(
-      route.coordinates.map(([lng, lat]) => [lat, lng] as [number, number]),
+      geometry.coordinates.map(([lng, lat]) => [lat, lng] as [number, number]),
     );
     map.fitBounds(bounds, { padding: [60, 60], maxZoom: 16 });
-  }, [map, route]);
+  }, [map, geometry]);
 
   return null;
 }
 
 export function RouteLayer() {
   const route = useFleetStore((state) => state.route);
+  const preview = useFleetStore((state) => state.preview);
   const destination = useFleetStore((state) => state.destination);
   const lastDispatch = useFleetStore((state) => state.lastDispatch);
 
-  if (!route && !destination) return null;
+  // La vista previa tiene prioridad: aun no hay despacho aprobado.
+  const activeGeometry = preview?.route.geometry ?? route;
+  const isPreview = Boolean(preview);
+
+  if (!activeGeometry && !destination) return null;
 
   const positions: [number, number][] =
-    route?.coordinates.map(([lng, lat]) => [lat, lng]) ?? [];
+    activeGeometry?.coordinates.map(([lng, lat]) => [lat, lng]) ?? [];
 
   return (
     <>
@@ -42,7 +50,16 @@ export function RouteLayer() {
       {positions.length > 0 && (
         <Polyline
           positions={positions}
-          pathOptions={{ color: '#059669', weight: 6, opacity: 0.85 }}
+          pathOptions={
+            isPreview
+              ? {
+                  color: '#f59e0b',
+                  weight: 5,
+                  opacity: 0.9,
+                  dashArray: '10 8',
+                }
+              : { color: '#059669', weight: 6, opacity: 0.85 }
+          }
         />
       )}
       {destination && (
@@ -52,8 +69,22 @@ export function RouteLayer() {
         >
           <Popup>
             <div className="text-sm">
-              <p className="font-semibold">Punto de entrega</p>
-              {lastDispatch && (
+              <p className="font-semibold">
+                {isPreview ? 'Destino propuesto' : 'Punto de entrega'}
+              </p>
+              {preview && (
+                <>
+                  <p>
+                    Vehiculo: {preview.vehicle.plate} (propuesta)
+                  </p>
+                  <p>Distancia: {preview.route.distanceKm} km</p>
+                  <p>ETA: {preview.route.durationMin} min</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Aprueba el viaje en el panel de despacho.
+                  </p>
+                </>
+              )}
+              {!preview && lastDispatch && (
                 <>
                   <p>Vehiculo: {lastDispatch.vehicle.plate}</p>
                   <p>Distancia: {lastDispatch.route.distanceKm} km</p>

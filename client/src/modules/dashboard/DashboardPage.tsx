@@ -3,6 +3,7 @@ import { AppHeader } from '../../components/AppHeader';
 import { MapView } from '../map/MapView';
 import { VoiceControl } from '../voice/VoiceControl';
 import { useFleetStore } from '../../store/fleet';
+import { useFleetStream } from '../../lib/fleetStream';
 import { DispatchPanel } from './DispatchPanel';
 import { FleetPanel } from './FleetPanel';
 
@@ -10,8 +11,12 @@ export function DashboardPage() {
   const loadVehicles = useFleetStore((state) => state.loadVehicles);
   const refresh = useFleetStore((state) => state.refresh);
 
+  // Tiempo real via SSE (movimiento de flota y auto-completado).
+  useFleetStream();
+
   useEffect(() => {
     void loadVehicles('all');
+    // Polling lento como respaldo por si el SSE se cae.
     const interval = window.setInterval(() => {
       void refresh();
     }, 12000);

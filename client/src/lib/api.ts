@@ -1,9 +1,11 @@
 import axios from 'axios';
 import type {
+  ActiveDispatch,
   AuthResponse,
   AuthUser,
   AuthenticatorMethod,
   Dispatch,
+  DispatchPreview,
   DispatchResponse,
   Vehicle,
   VehicleStatus,
@@ -80,9 +82,24 @@ export const vehiclesApi = {
 
 export const dispatchApi = {
   list: () => api.get<Dispatch[]>('/dispatch').then((r) => r.data),
-  create: (destLat: number, destLng: number, destLabel?: string) =>
+  active: () =>
+    api.get<ActiveDispatch[]>('/dispatch/active').then((r) => r.data),
+  preview: (destLat: number, destLng: number, destLabel?: string) =>
     api
-      .post<DispatchResponse>('/dispatch', { destLat, destLng, destLabel })
+      .post<Omit<DispatchPreview, 'destination'>>('/dispatch/preview', {
+        destLat,
+        destLng,
+        destLabel,
+      })
+      .then((r) => r.data),
+  create: (
+    destLat: number,
+    destLng: number,
+    destLabel?: string,
+    vehicleId?: string,
+  ) =>
+    api
+      .post<DispatchResponse>('/dispatch', { destLat, destLng, destLabel, vehicleId })
       .then((r) => r.data),
   complete: (id: string) =>
     api.post<Dispatch>(`/dispatch/${id}/complete`).then((r) => r.data),

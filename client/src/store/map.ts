@@ -4,6 +4,7 @@ export interface MapControls {
   center: () => void;
   zoomIn: () => void;
   zoomOut: () => void;
+  flyTo: (lat: number, lng: number, zoom?: number) => void;
 }
 
 interface MapState {
@@ -16,5 +17,5 @@ export const useMapStore = create<MapState>((set) => ({
   setControls: (controls) => set({ controls }),
 }));
 
-export const BASE_COORDINATE = { lat: -0.1807, lng: -78.4678 };
+export const BASE_COORDINATE = { lat: 7.889, lng: -72.4967 };
 export const BASE_ZOOM = 13;
