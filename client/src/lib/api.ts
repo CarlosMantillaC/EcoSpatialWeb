@@ -1,12 +1,19 @@
 import axios from 'axios';
 import type {
   ActiveDispatch,
+  AuditLogEntry,
   AuthResponse,
   AuthUser,
   AuthenticatorMethod,
   Dispatch,
   DispatchPreview,
   DispatchResponse,
+  Driver,
+  DriverStatus,
+  FleetAlert,
+  ReportSummary,
+  ServiceOrder,
+  ServiceOrderStatus,
   Vehicle,
   VehicleStatus,
 } from '../types';
@@ -78,6 +85,16 @@ export const vehiclesApi = {
       .get<Vehicle[]>('/vehicles', { params: status ? { status } : {} })
       .then((r) => r.data),
   listJsonLd: () => api.get('/vehicles', { params: { format: 'jsonld' } }),
+  update: (
+    id: string,
+    data: {
+      plate?: string;
+      driverName?: string;
+      driverId?: string | null;
+      cargoType?: string;
+      status?: VehicleStatus;
+    },
+  ) => api.patch<Vehicle>(`/vehicles/${id}`, data).then((r) => r.data),
 };
 
 export const dispatchApi = {
@@ -97,14 +114,100 @@ export const dispatchApi = {
     destLng: number,
     destLabel?: string,
     vehicleId?: string,
+    orderId?: string,
   ) =>
     api
-      .post<DispatchResponse>('/dispatch', { destLat, destLng, destLabel, vehicleId })
+      .post<DispatchResponse>('/dispatch', {
+        destLat,
+        destLng,
+        destLabel,
+        vehicleId,
+        orderId,
+      })
       .then((r) => r.data),
   complete: (id: string) =>
     api.post<Dispatch>(`/dispatch/${id}/complete`).then((r) => r.data),
   cancel: (id: string) =>
     api.post<Dispatch>(`/dispatch/${id}/cancel`).then((r) => r.data),
+};
+
+export const driversApi = {
+  list: (status?: DriverStatus) =>
+    api
+      .get<Driver[]>('/drivers', { params: status ? { status } : {} })
+      .then((r) => r.data),
+  create: (data: {
+    name: string;
+    license?: string;
+    phone?: string;
+  }) => api.post<Driver>('/drivers', data).then((r) => r.data),
+  update: (
+    id: string,
+    data: { name?: string; license?: string; phone?: string; status?: DriverStatus },
+  ) => api.patch<Driver>(`/drivers/${id}`, data).then((r) => r.data),
+  remove: (id: string) =>
+    api.delete(`/drivers/${id}`).then((r) => r.data),
+};
+
+export const ordersApi = {
+  list: (status?: ServiceOrderStatus) =>
+    api
+      .get<ServiceOrder[]>('/orders', { params: status ? { status } : {} })
+      .then((r) => r.data),
+  create: (data: {
+    clientName: string;
+    contact?: string;
+    destLat: number;
+    destLng: number;
+    destLabel?: string;
+    priority?: 'baja' | 'media' | 'alta';
+    notes?: string;
+  }) => api.post<ServiceOrder>('/orders', data).then((r) => r.data),
+  cancel: (id: string) =>
+    api.post<ServiceOrder>(`/orders/${id}/cancel`).then((r) => r.data),
+  remove: (id: string) => api.delete(`/orders/${id}`).then((r) => r.data),
+};
+
+export const alertsApi = {
+  list: (unreadOnly = false) =>
+    api
+      .get<FleetAlert[]>('/alerts', {
+        params: unreadOnly ? { unread: 'true' } : {},
+      })
+      .then((r) => r.data),
+  markRead: (id: string) =>
+    api.patch<FleetAlert>(`/alerts/${id}/read`).then((r) => r.data),
+  markAllRead: () =>
+    api.post<{ updated: number }>('/alerts/read-all').then((r) => r.data),
+};
+
+export const auditApi = {
+  list: (limit = 50) =>
+    api
+      .get<AuditLogEntry[]>('/audit', { params: { limit } })
+      .then((r) => r.data),
+};
+
+export const reportsApi = {
+  summary: (from?: string, to?: string) =>
+    api
+      .get<ReportSummary>('/reports/summary', { params: { from, to } })
+      .then((r) => r.data),
+  /** Descarga el CSV de despachos en el navegador. */
+  downloadDispatchesCsv: async (from?: string, to?: string) => {
+    const response = await api.get<Blob>('/reports/dispatches.csv', {
+      params: { from, to },
+      responseType: 'blob',
+    });
+    const url = URL.createObjectURL(response.data);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'despachos.csv';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  },
 };
 
 export default api;

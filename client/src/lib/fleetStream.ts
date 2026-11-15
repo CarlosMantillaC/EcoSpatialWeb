@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react';
+import { useAlertsStore } from '../store/alerts';
 import { useAuthStore } from '../store/auth';
 import { useFleetStore } from '../store/fleet';
-import type { FleetUpdate } from '../types';
+import type { FleetAlert, FleetUpdate } from '../types';
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? '/api';
 const MAX_BACKOFF_MS = 15_000;
@@ -17,10 +18,15 @@ export function useFleetStream() {
   const handleDispatchCompleted = useFleetStore(
     (state) => state.handleDispatchCompleted,
   );
+  const addAlert = useAlertsStore((state) => state.addAlert);
   // Guardamos las ultimas acciones en un ref para no recrear la
   // conexion en cada cambio del store.
-  const actionsRef = useRef({ applyFleetUpdate, handleDispatchCompleted });
-  actionsRef.current = { applyFleetUpdate, handleDispatchCompleted };
+  const actionsRef = useRef({
+    applyFleetUpdate,
+    handleDispatchCompleted,
+    addAlert,
+  });
+  actionsRef.current = { applyFleetUpdate, handleDispatchCompleted, addAlert };
 
   useEffect(() => {
     if (!token) return;
@@ -53,6 +59,16 @@ export function useFleetStream() {
             dispatchId: string;
           };
           actionsRef.current.handleDispatchCompleted(data.dispatchId);
+        } catch {
+          /* payload corrupto: se ignora */
+        }
+      });
+
+      source.addEventListener('alert', (event) => {
+        retryMs = 1000;
+        try {
+          const data = JSON.parse((event as MessageEvent).data) as FleetAlert;
+          actionsRef.current.addAlert(data);
         } catch {
           /* payload corrupto: se ignora */
         }

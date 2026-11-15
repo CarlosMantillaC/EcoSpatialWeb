@@ -1,9 +1,11 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { VehiclesService } from './modules/vehicles/vehicles.service';
+import { DriversService } from './modules/drivers/drivers.service';
 import { RoutingService } from './modules/routing/routing.service';
 import { randomWaypointInside } from './modules/simulator/wander';
 import { isInsideCucuta } from './common/cucuta-boundary';
+import { Driver } from './entities/driver.entity';
 import { VehicleStatus } from './entities/vehicle.entity';
 
 const DRIVERS = [
@@ -73,8 +75,21 @@ async function bootstrap() {
   }
   const routing = app.get(RoutingService);
 
+  // Conductores primero: los vehiculos quedan vinculados a su perfil.
+  const driversService = app.get(DriversService);
+  const drivers: Driver[] = [];
+  for (const name of DRIVERS) {
+    drivers.push(
+      await driversService.create({
+        name,
+        license: `LIC-${1000 + Math.floor(Math.random() * 9000)}`,
+      }),
+    );
+  }
+
   for (let i = 0; i < total; i += 1) {
     const onRoute = Math.random() < 0.25;
+    const driver = drivers[i % drivers.length];
     // Punto aleatorio del area, luego "snapped" a la calle real mas
     // cercana via OSRM (el primer vertice de una ruta corta). Si OSRM
     // no responde se usa el punto tal cual.
@@ -83,7 +98,8 @@ async function bootstrap() {
 
     await vehiclesService.create({
       plate: `PBA-${1000 + Math.floor(Math.random() * 9000)}`,
-      driverName: DRIVERS[i % DRIVERS.length],
+      driverId: driver.id,
+      driverName: driver.name,
       cargoType: CARGOS[i % CARGOS.length],
       status: onRoute ? VehicleStatus.ON_ROUTE : VehicleStatus.FREE,
       lat: position.lat,

@@ -8,7 +8,11 @@ export type VoiceCommandId =
   | 'zoom_out'
   | 'show_free'
   | 'show_route'
-  | 'clear';
+  | 'clear'
+  | 'show_orders'
+  | 'show_drivers'
+  | 'show_reports'
+  | 'show_audit';
 
 export interface VoiceCommandDefinition {
   id: VoiceCommandId;
@@ -50,6 +54,26 @@ export const VOICE_COMMANDS: VoiceCommandDefinition[] = [
     id: 'clear',
     label: 'Limpiar pantalla',
     phrases: ['limpiar pantalla', 'limpiar mapa', 'limpiar'],
+  },
+  {
+    id: 'show_orders',
+    label: 'Mostrar ordenes',
+    phrases: ['mostrar ordenes', 'ver ordenes', 'ordenes de servicio'],
+  },
+  {
+    id: 'show_drivers',
+    label: 'Mostrar conductores',
+    phrases: ['mostrar conductores', 'ver conductores', 'conductores'],
+  },
+  {
+    id: 'show_reports',
+    label: 'Mostrar reportes',
+    phrases: ['mostrar reportes', 'ver reportes', 'reportes'],
+  },
+  {
+    id: 'show_audit',
+    label: 'Mostrar auditoria',
+    phrases: ['mostrar auditoria', 'ver auditoria', 'auditoria', 'bitacora'],
   },
 ];
 

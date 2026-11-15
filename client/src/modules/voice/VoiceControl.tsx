@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { useFleetStore } from '../../store/fleet';
 import { useMapStore } from '../../store/map';
+import { useOpsStore } from '../../store/ops';
 import { useThemeStore } from '../../store/theme';
 import { matchCommand, VOICE_COMMANDS, type VoiceCommandId } from './commands';
 import { useSpeechRecognition } from './useSpeechRecognition';
@@ -19,6 +20,7 @@ export function VoiceControl() {
   const clearMarkers = useFleetStore((state) => state.clearMarkers);
   const clearRoute = useFleetStore((state) => state.clearRoute);
   const setTheme = useThemeStore((state) => state.setTheme);
+  const setOpsTab = useOpsStore((state) => state.setTab);
   const controls = useMapStore((state) => state.controls);
 
   const execute = useCallback(
@@ -55,6 +57,18 @@ export function VoiceControl() {
           clearMarkers();
           clearRoute();
           return 'Pantalla limpiada';
+        case 'show_orders':
+          setOpsTab('ordenes');
+          return 'Mostrando ordenes de servicio';
+        case 'show_drivers':
+          setOpsTab('conductores');
+          return 'Mostrando conductores';
+        case 'show_reports':
+          setOpsTab('reportes');
+          return 'Mostrando reportes';
+        case 'show_audit':
+          setOpsTab('auditoria');
+          return 'Mostrando auditoria';
         default:
           return 'Comando no reconocido';
       }

@@ -3,9 +3,14 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import configuration from './config/configuration';
+import { AlertsModule } from './modules/alerts/alerts.module';
+import { AuditModule } from './modules/audit/audit.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { DispatchModule } from './modules/dispatch/dispatch.module';
+import { DriversModule } from './modules/drivers/drivers.module';
 import { EventsModule } from './modules/events/events.module';
+import { OrdersModule } from './modules/orders/orders.module';
+import { ReportsModule } from './modules/reports/reports.module';
 import { RoutingModule } from './modules/routing/routing.module';
 import { SimulatorModule } from './modules/simulator/simulator.module';
 import { UsersModule } from './modules/users/users.module';
@@ -42,9 +47,14 @@ import { VehiclesModule } from './modules/vehicles/vehicles.module';
     ScheduleModule.forRoot(),
     AuthModule,
     UsersModule,
+    DriversModule,
     VehiclesModule,
     RoutingModule,
     DispatchModule,
+    OrdersModule,
+    AlertsModule,
+    AuditModule,
+    ReportsModule,
     EventsModule,
     SimulatorModule,
   ],

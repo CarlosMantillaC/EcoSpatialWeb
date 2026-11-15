@@ -4,6 +4,7 @@ import {
   IsLongitude,
   IsOptional,
   IsString,
+  IsUUID,
 } from 'class-validator';
 import { VehicleStatus } from '../../../entities/vehicle.entity';
 
@@ -15,6 +16,11 @@ export class UpdateVehicleDto {
   @IsOptional()
   @IsString()
   driverName?: string;
+
+  /** Conductor asignado; `driverName` se sincroniza con su nombre. */
+  @IsOptional()
+  @IsUUID()
+  driverId?: string | null;
 
   @IsOptional()
   @IsString()

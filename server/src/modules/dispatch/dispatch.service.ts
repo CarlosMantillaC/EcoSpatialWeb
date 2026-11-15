@@ -10,12 +10,20 @@ import {
   Dispatch,
   DispatchStatus,
 } from '../../entities/dispatch.entity';
+import {
+  ServiceOrder,
+  ServiceOrderStatus,
+} from '../../entities/service-order.entity';
 import { Vehicle, VehicleStatus } from '../../entities/vehicle.entity';
 import { Coords, positionAlongRoute } from '../../common/geo';
 import {
   isInsideCucuta,
   isRouteInsideCucuta,
 } from '../../common/cucuta-boundary';
+import { AlertSeverity, AlertType } from '../../entities/alert.entity';
+import { DriverStatus } from '../../entities/driver.entity';
+import { AlertsService } from '../alerts/alerts.service';
+import { DriversService } from '../drivers/drivers.service';
 import { RoutingService } from '../routing/routing.service';
 import { VehiclesService } from '../vehicles/vehicles.service';
 import { CreateDispatchDto } from './dto/create-dispatch.dto';
@@ -39,7 +47,11 @@ export class DispatchService {
   constructor(
     @InjectRepository(Dispatch)
     private readonly dispatchesRepository: Repository<Dispatch>,
+    @InjectRepository(ServiceOrder)
+    private readonly ordersRepository: Repository<ServiceOrder>,
     private readonly vehiclesService: VehiclesService,
+    private readonly driversService: DriversService,
+    private readonly alertsService: AlertsService,
     private readonly routingService: RoutingService,
     config: ConfigService,
   ) {
@@ -78,6 +90,22 @@ export class DispatchService {
     const target = { lat: dto.destLat, lng: dto.destLng };
     this.assertDestinationInCucuta(target);
 
+    // Si el viaje nace de una orden, se valida y se marca como asignada.
+    let order: ServiceOrder | null = null;
+    if (dto.orderId) {
+      order = await this.ordersRepository.findOne({
+        where: { id: dto.orderId },
+      });
+      if (!order) {
+        throw new NotFoundException(`Orden ${dto.orderId} no encontrada`);
+      }
+      if (order.status !== ServiceOrderStatus.PENDING) {
+        throw new BadRequestException(
+          'La orden ya fue despachada o cancelada',
+        );
+      }
+    }
+
     // Prefiere el vehiculo de la vista previa si sigue libre; si otro
     // usuario lo tomo primero, asigna el mas cercano disponible.
     const vehicle =
@@ -110,8 +138,9 @@ export class DispatchService {
       originLng: origin.lng,
       destLat: target.lat,
       destLng: target.lng,
-      destLabel: dto.destLabel,
+      destLabel: dto.destLabel ?? order?.destLabel ?? null,
       vehicleId: vehicle.id,
+      orderId: order?.id ?? null,
       distanceKm: route.distanceKm,
       durationMin: route.durationMin,
       status: DispatchStatus.ASSIGNED,
@@ -120,6 +149,18 @@ export class DispatchService {
     const saved = await this.dispatchesRepository.save(dispatch);
 
     await this.vehiclesService.setStatus(vehicle.id, VehicleStatus.ON_ROUTE);
+
+    if (order) {
+      order.status = ServiceOrderStatus.ASSIGNED;
+      order.dispatchId = saved.id;
+      await this.ordersRepository.save(order);
+    }
+    if (vehicle.driverId) {
+      await this.driversService.setStatus(
+        vehicle.driverId,
+        DriverStatus.ON_TRIP,
+      );
+    }
 
     return {
       dispatch: saved,
@@ -219,14 +260,45 @@ export class DispatchService {
         'El despacho fue cancelado y no puede completarse',
       );
     }
+    let vehicle: Vehicle | null = null;
     if (dispatch.vehicleId) {
+      vehicle = await this.vehiclesService.findOne(dispatch.vehicleId);
       await this.vehiclesService.setStatus(
         dispatch.vehicleId,
         VehicleStatus.FREE,
       );
     }
     dispatch.status = DispatchStatus.COMPLETED;
-    return this.dispatchesRepository.save(dispatch);
+    dispatch.completedAt = new Date();
+    const saved = await this.dispatchesRepository.save(dispatch);
+
+    if (dispatch.orderId) {
+      const order = await this.ordersRepository.findOne({
+        where: { id: dispatch.orderId },
+      });
+      if (order && order.status === ServiceOrderStatus.ASSIGNED) {
+        order.status = ServiceOrderStatus.COMPLETED;
+        await this.ordersRepository.save(order);
+      }
+    }
+    if (vehicle?.driverId) {
+      await this.driversService.setStatus(
+        vehicle.driverId,
+        DriverStatus.AVAILABLE,
+      );
+    }
+
+    await this.alertsService.create({
+      type: AlertType.ARRIVAL,
+      severity: AlertSeverity.INFO,
+      message: `Servicio completado: ${vehicle?.plate ?? 'vehiculo'} llego a ${
+        dispatch.destLabel ?? 'su destino'
+      }`,
+      vehicleId: dispatch.vehicleId ?? null,
+      dispatchId: dispatch.id,
+    });
+
+    return saved;
   }
 
   async cancel(id: string): Promise<Dispatch> {
@@ -235,13 +307,35 @@ export class DispatchService {
     if (dispatch.status === DispatchStatus.COMPLETED) {
       throw new BadRequestException('El despacho ya fue completado');
     }
+    let vehicle: Vehicle | null = null;
     if (dispatch.vehicleId) {
+      vehicle = await this.vehiclesService.findOne(dispatch.vehicleId);
       await this.vehiclesService.setStatus(
         dispatch.vehicleId,
         VehicleStatus.FREE,
       );
     }
     dispatch.status = DispatchStatus.CANCELLED;
-    return this.dispatchesRepository.save(dispatch);
+    const saved = await this.dispatchesRepository.save(dispatch);
+
+    // La orden vuelve a la cola para poder reasignarla a otro viaje.
+    if (dispatch.orderId) {
+      const order = await this.ordersRepository.findOne({
+        where: { id: dispatch.orderId },
+      });
+      if (order && order.status === ServiceOrderStatus.ASSIGNED) {
+        order.status = ServiceOrderStatus.PENDING;
+        order.dispatchId = null;
+        await this.ordersRepository.save(order);
+      }
+    }
+    if (vehicle?.driverId) {
+      await this.driversService.setStatus(
+        vehicle.driverId,
+        DriverStatus.AVAILABLE,
+      );
+    }
+
+    return saved;
   }
 }

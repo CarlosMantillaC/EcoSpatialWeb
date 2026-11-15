@@ -6,10 +6,12 @@ import type {
   FleetUpdate,
   LatLng,
   RouteGeometry,
+  ServiceOrder,
   Vehicle,
   VehicleStatus,
 } from '../types';
 import { dispatchApi, vehiclesApi } from '../lib/api';
+import { useOpsStore } from './ops';
 
 export type FleetFilter = 'all' | VehicleStatus;
 
@@ -39,6 +41,8 @@ interface FleetState {
   lastDispatch: DispatchResponse | null;
   /** Destino elegido aun sin aprobar. */
   preview: DispatchPreview | null;
+  /** Orden de servicio que origina el despacho en curso (si aplica). */
+  pendingOrder: ServiceOrder | null;
   route: RouteGeometry | null;
   destination: LatLng | null;
   loadVehicles: (filter?: FleetFilter) => Promise<void>;
@@ -52,6 +56,8 @@ interface FleetState {
   clearMarkers: () => void;
   /** Paso 1: elige destino y calcula vista previa (sin asignar nada). */
   selectDestination: (lat: number, lng: number, label?: string) => Promise<void>;
+  /** Paso 1 desde una orden: preview del viaje con destino de la orden. */
+  startOrderDispatch: (order: ServiceOrder) => Promise<void>;
   /** Descarta la vista previa sin tocar el despacho activo. */
   discardPreview: () => void;
   /** Paso 2: aprueba y crea el despacho. */
@@ -114,6 +120,7 @@ export const useFleetStore = create<FleetState>((set, get) => ({
   notice: null,
   lastDispatch: null,
   preview: null,
+  pendingOrder: null,
   route: null,
   destination: null,
 
@@ -182,10 +189,12 @@ export const useFleetStore = create<FleetState>((set, get) => ({
         set({
           lastDispatch: null,
           preview: null,
+          pendingOrder: null,
           route: null,
           destination: null,
           notice: 'Servicio completado automaticamente.',
         });
+        void useOpsStore.getState().loadOrders();
       }
 
       get().applyFleetUpdate({ vehicles, activeDispatches });
@@ -240,10 +249,28 @@ export const useFleetStore = create<FleetState>((set, get) => ({
   },
 
   discardPreview: () =>
-    set({ preview: null, destination: null, notice: null, error: null }),
+    set({
+      preview: null,
+      destination: null,
+      pendingOrder: null,
+      notice: null,
+      error: null,
+    }),
+
+  startOrderDispatch: async (order) => {
+    set({ pendingOrder: order });
+    await get().selectDestination(
+      order.destLat,
+      order.destLng,
+      order.destLabel ?? order.clientName,
+    );
+    // Si el preview fallo (destino fuera de Cucuta, sin vehiculos...),
+    // no queda una orden colgando en el panel.
+    if (!get().preview) set({ pendingOrder: null });
+  },
 
   approveDispatch: async () => {
-    const { preview, loading } = get();
+    const { preview, pendingOrder, loading } = get();
     if (!preview || loading) return;
 
     const { destination, vehicle } = preview;
@@ -254,14 +281,17 @@ export const useFleetStore = create<FleetState>((set, get) => ({
         destination.lng,
         undefined,
         vehicle.id,
+        pendingOrder?.id,
       );
       set({
         lastDispatch: result,
         route: result.route.geometry,
         destination,
         preview: null,
+        pendingOrder: null,
         loading: false,
       });
+      void useOpsStore.getState().loadOrders();
       await get().refresh();
     } catch (error) {
       set({
@@ -294,11 +324,13 @@ export const useFleetStore = create<FleetState>((set, get) => ({
       set({
         lastDispatch: null,
         preview: null,
+        pendingOrder: null,
         route: null,
         destination: null,
         loading: false,
         notice: 'Servicio completado.',
       });
+      void useOpsStore.getState().loadOrders();
       await get().refresh();
     } catch (error) {
       set({
@@ -317,11 +349,13 @@ export const useFleetStore = create<FleetState>((set, get) => ({
       set({
         lastDispatch: null,
         preview: null,
+        pendingOrder: null,
         route: null,
         destination: null,
         loading: false,
         notice: 'Despacho cancelado y vehiculo liberado.',
       });
+      void useOpsStore.getState().loadOrders();
       await get().refresh();
     } catch (error) {
       set({
@@ -337,10 +371,14 @@ export const useFleetStore = create<FleetState>((set, get) => ({
       set({
         lastDispatch: null,
         preview: null,
+        pendingOrder: null,
         route: null,
         destination: null,
         notice: 'Servicio completado automaticamente.',
       });
     }
+    // El despacho pudo cerrarse en el servidor: la orden vuelve a estar
+    // al dia (completada o devuelta a la cola si se cancelo alla).
+    void useOpsStore.getState().loadOrders();
   },
 }));

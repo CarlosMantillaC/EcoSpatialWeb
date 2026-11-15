@@ -107,6 +107,10 @@ El micrófono se procesa localmente con la Web Speech API (`es-ES`). El dicciona
 | "acercar" / "alejar" | Zoom del mapa |
 | "mostrar disponibles" | Filtra vehículos `libre` |
 | "mostrar en ruta" | Filtra vehículos `en_ruta` |
+| "mostrar ordenes" / "ver ordenes" | Abre la pestaña Órdenes del panel Operación |
+| "mostrar conductores" | Abre la pestaña Conductores |
+| "mostrar reportes" | Abre la pestaña Reportes |
+| "mostrar auditoria" / "bitacora" | Abre la pestaña Auditoría |
 | "limpiar pantalla" | Oculta marcadores y ruta |
 
 > La capa de "tráfico" es **simulada** (incidencias propias), ya que OpenStreetMap no ofrece tráfico en tiempo real en tiles gratuitos.
@@ -132,6 +136,34 @@ Al llegar al destino el servicio **se completa solo** y aparece el aviso "Servic
 
 > El botón **Ocultar ruta** y el comando de voz "limpiar pantalla" solo ocultan la ruta en pantalla; el despacho sigue activo y se puede completar, cancelar o volver a mostrar con **Mostrar ruta**.
 
+## Operación (MVP)
+
+El panel **Operacion** (columna izquierda del dashboard) agrupa la gestión de negocio sobre la flota simulada:
+
+### Órdenes de servicio
+
+- Cola de órdenes con **cliente, contacto, destino, prioridad** (baja/media/alta), ventana horaria y notas.
+- Flujo formal: **Nueva orden → Despachar** abre la misma vista previa del flujo de despacho (vehículo más cercano, distancia, ETA) y al **Aprobar viaje** la orden queda `asignada` con trazabilidad `orden → despacho`.
+- Al completar el servicio la orden pasa a `completada`; si el despacho se **cancela**, la orden **vuelve a la cola** para reasignarla.
+- Los destinos se validan contra el perímetro urbano de Cúcuta.
+
+### Conductores
+
+- Plantilla de conductores (nombre, licencia, teléfono) con estado `disponible | en_viaje | fuera`.
+- Asignación de conductor a vehículo desde el panel (el nombre se sincroniza en el vehículo).
+- El estado cambia solo: `en_viaje` al aprobar un despacho y `disponible` al completar/cancelar.
+
+### Alertas y notificaciones
+
+- **Campana en el header** con contador de no leídas y stream en tiempo real por SSE (evento `alert`).
+- Tipos: `llegada` (servicio completado), `geocerca` (vehículo reubicado por salir del perímetro), `velocidad` (tráfico de fondo sobre el límite urbano) y `sistema`.
+- El simulador limita la frecuencia (una alerta por vehículo y tipo cada 5 minutos) para no saturar la campana.
+
+### Reportes y auditoría
+
+- **Reportes**: KPIs del periodo (servicios completados, distancia total, tiempo promedio, tasa de éxito, órdenes pendientes, flota libre), gráfica de servicios por día, vehículos destacados y **exportación CSV** del historial de despachos.
+- **Auditoría**: bitácora de acciones de los operadores autenticados (aprobar/cancelar despachos, crear/editar órdenes, vehículos y conductores) con usuario, entidad y fecha.
+
 ## API principal
 
 | Método | Ruta | Descripción |
@@ -155,7 +187,20 @@ Al llegar al destino el servicio **se completa solo** y aparece el aviso "Servic
 | GET | `/api/dispatch/:id/jsonld` | Despacho en JSON-LD |
 | POST | `/api/dispatch/:id/complete` | Completa y libera el vehículo |
 | POST | `/api/dispatch/:id/cancel` | Cancela y libera el vehículo |
-| GET | `/api/events/dispatch` | Stream SSE: `fleet` (flota + progreso) y `dispatch-completed` |
+| GET | `/api/events/dispatch` | Stream SSE: `fleet` (flota + progreso), `dispatch-completed` y `alert` |
+| GET/POST | `/api/drivers` | Lista / crea conductores (`?status=disponible\|en_viaje\|fuera`) |
+| PATCH/DELETE | `/api/drivers/:id` | Actualiza / elimina conductor |
+| GET/POST | `/api/orders` | Lista / crea órdenes de servicio (`?status=pendiente\|asignada\|completada\|cancelada`) |
+| PATCH/DELETE | `/api/orders/:id` | Edita / elimina orden (solo `pendiente`) |
+| POST | `/api/orders/:id/cancel` | Cancela la orden (solo `pendiente`) |
+| POST | `/api/orders/:id/preview` | Vista previa del viaje para la orden |
+| POST | `/api/orders/:id/dispatch` | Despacha la orden (la marca `asignada`) |
+| GET | `/api/alerts` | Historial de alertas (`?unread=true`) |
+| PATCH | `/api/alerts/:id/read` | Marca una alerta como leída |
+| POST | `/api/alerts/read-all` | Marca todas las alertas como leídas |
+| GET | `/api/reports/summary` | KPIs, servicios por día y vehículos destacados (`?from=&to=`) |
+| GET | `/api/reports/dispatches.csv` | Exportación CSV del historial de despachos |
+| GET | `/api/audit` | Bitácora de auditoría (`?action=&limit=`) |
 
 ## Estructura
 
@@ -163,22 +208,29 @@ Al llegar al destino el servicio **se completa solo** y aparece el aviso "Servic
 EcoSpatialWeb/
 ├─ client/
 │  └─ src/
-│     ├─ components/          # Header, ThemeToggle
+│     ├─ components/          # Header, ThemeToggle, NotificationBell
 │     ├─ lib/                 # api, webauthn, fleetStream (SSE)
 │     ├─ modules/
 │     │  ├─ auth/             # Login, Enroll, ProtectedRoute, inactividad
-│     │  ├─ dashboard/        # Paneles de flota y despacho
+│     │  ├─ dashboard/        # Paneles de flota, despacho y operación
+│     │  │                    #   (Ordenes, Conductores, Reportes, Auditoria)
 │     │  ├─ map/              # Leaflet, marcadores, ruta, tráfico
 │     │  └─ voice/            # Web Speech API + diccionario
-│     └─ store/               # Zustand (auth, fleet, theme, map)
+│     └─ store/               # Zustand (auth, fleet, alerts, ops, theme, map)
 └─ server/
    └─ src/
-      ├─ entities/            # User, Credential, Vehicle, Dispatch
+      ├─ entities/            # User, Credential, Vehicle, Driver, Dispatch,
+      │                       #   ServiceOrder, Alert, AuditLog
       ├─ modules/
       │  ├─ auth/             # WebAuthn + JWT
       │  ├─ users/
+      │  ├─ drivers/          # Plantilla de conductores
       │  ├─ vehicles/
       │  ├─ dispatch/
+      │  ├─ orders/           # Ordenes de servicio (cola + despacho)
+      │  ├─ alerts/           # Alertas operativas (SSE)
+      │  ├─ audit/            # Bitacora de acciones
+      │  ├─ reports/          # KPIs, agregaciones y CSV
       │  ├─ events/           # Stream SSE de estado de flota
       │  ├─ routing/          # Cliente OSRM
       │  └─ simulator/        # Movimiento de flota + auto-completado

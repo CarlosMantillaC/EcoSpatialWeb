@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Observable, Subject } from 'rxjs';
 
 export interface FleetEvent {
-  event: 'fleet' | 'dispatch-completed';
+  event: 'fleet' | 'dispatch-completed' | 'alert';
   data: unknown;
 }
 

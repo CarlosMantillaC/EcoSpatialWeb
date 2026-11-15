@@ -3,6 +3,7 @@ import { useFleetStore } from '../../store/fleet';
 export function DispatchPanel() {
   const lastDispatch = useFleetStore((state) => state.lastDispatch);
   const preview = useFleetStore((state) => state.preview);
+  const pendingOrder = useFleetStore((state) => state.pendingOrder);
   const destination = useFleetStore((state) => state.destination);
   const loading = useFleetStore((state) => state.loading);
   const notice = useFleetStore((state) => state.notice);
@@ -32,6 +33,11 @@ export function DispatchPanel() {
     ? Math.round(activeView.progress * 100)
     : null;
 
+  // Sin despacho, preview ni avisos: la tarjeta no se muestra.
+  const hasContent =
+    Boolean(lastDispatch || preview || destination || notice || error);
+  if (!hasContent) return null;
+
   return (
     <div className="pointer-events-auto w-full max-w-sm rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-lg backdrop-blur dark:border-slate-700 dark:bg-slate-900/95">
       <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
@@ -50,22 +56,18 @@ export function DispatchPanel() {
         </p>
       )}
 
-      {/* Estado 1: sin seleccion ni despacho */}
-      {!lastDispatch && !preview && !destination && (
-        <p className="text-sm text-slate-500 dark:text-slate-400">
-          Selecciona un punto de entrega en el mapa. El sistema calculara la
-          ruta y el vehiculo mas cercano, y podras aprobar el viaje antes de
-          asignarlo.
-        </p>
-      )}
-
       {/* Estado 2: vista previa pendiente de aprobacion */}
       {preview && !lastDispatch && (
         <div className="space-y-3">
           <div className="rounded-xl bg-amber-50 p-3 dark:bg-amber-950/40">
             <p className="text-xs uppercase tracking-wide text-amber-700/80 dark:text-amber-400/80">
-              Destino propuesto (sin aprobar)
+              {pendingOrder ? 'Orden de servicio (sin aprobar)' : 'Destino propuesto (sin aprobar)'}
             </p>
+            {pendingOrder && (
+              <p className="text-sm font-semibold text-amber-900 dark:text-amber-100">
+                {pendingOrder.clientName}
+              </p>
+            )}
             <p className="text-sm text-amber-800/90 dark:text-amber-200/90">
               {preview.destination.lat.toFixed(5)},{' '}
               {preview.destination.lng.toFixed(5)}

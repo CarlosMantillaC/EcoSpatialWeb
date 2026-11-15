@@ -2,9 +2,12 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  JoinColumn,
+  ManyToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import { Driver } from './driver.entity';
 
 export enum VehicleStatus {
   FREE = 'libre',
@@ -21,6 +24,17 @@ export class Vehicle {
 
   @Column({ name: 'driver_name', type: 'text', nullable: true })
   driverName?: string;
+
+  /** Conductor asignado (el nombre se denormaliza en `driverName`). */
+  @Column({ name: 'driver_id', type: 'uuid', nullable: true })
+  driverId?: string | null;
+
+  @ManyToOne(() => Driver, (driver) => driver.vehicles, {
+    nullable: true,
+    onDelete: 'SET NULL',
+  })
+  @JoinColumn({ name: 'driver_id' })
+  driver?: Driver | null;
 
   @Column({ type: 'enum', enum: VehicleStatus, default: VehicleStatus.FREE })
   status: VehicleStatus;

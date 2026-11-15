@@ -6,6 +6,7 @@ import { useFleetStore } from '../../store/fleet';
 import { useFleetStream } from '../../lib/fleetStream';
 import { DispatchPanel } from './DispatchPanel';
 import { FleetPanel } from './FleetPanel';
+import { OpsPanel } from './OpsPanel';
 
 export function DashboardPage() {
   const loadVehicles = useFleetStore((state) => state.loadVehicles);
@@ -35,6 +36,7 @@ export function DashboardPage() {
 
       <div className="pointer-events-none absolute left-3 top-20 z-20 flex max-h-[calc(100%-6rem)] w-[calc(100%-1.5rem)] max-w-sm flex-col gap-3 overflow-y-auto pb-4 sm:left-4">
         <FleetPanel />
+        <OpsPanel />
         <VoiceControl />
       </div>
 

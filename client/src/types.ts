@@ -4,12 +4,108 @@ export interface Vehicle {
   id: string;
   plate: string;
   driverName?: string | null;
+  driverId?: string | null;
   cargoType?: string | null;
   status: VehicleStatus;
   lat: number;
   lng: number;
   lastUpdate: string;
   createdAt: string;
+}
+
+export type DriverStatus = 'disponible' | 'en_viaje' | 'fuera';
+
+export interface Driver {
+  id: string;
+  name: string;
+  license?: string | null;
+  phone?: string | null;
+  status: DriverStatus;
+  lastUpdate: string;
+  createdAt: string;
+}
+
+export type ServiceOrderStatus =
+  | 'pendiente'
+  | 'asignada'
+  | 'completada'
+  | 'cancelada';
+
+export type ServiceOrderPriority = 'baja' | 'media' | 'alta';
+
+export interface ServiceOrder {
+  id: string;
+  clientName: string;
+  contact?: string | null;
+  destLat: number;
+  destLng: number;
+  destLabel?: string | null;
+  priority: ServiceOrderPriority;
+  windowStart?: string | null;
+  windowEnd?: string | null;
+  notes?: string | null;
+  status: ServiceOrderStatus;
+  dispatchId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type AlertType = 'geocerca' | 'velocidad' | 'llegada' | 'sistema';
+export type AlertSeverity = 'info' | 'warning' | 'critical';
+
+export interface FleetAlert {
+  id: string;
+  type: AlertType;
+  severity: AlertSeverity;
+  message: string;
+  vehicleId?: string | null;
+  dispatchId?: string | null;
+  readAt?: string | null;
+  createdAt: string;
+}
+
+export interface AuditLogEntry {
+  id: string;
+  userId?: string | null;
+  userEmail?: string | null;
+  action: string;
+  entityType: string;
+  entityId?: string | null;
+  detail?: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface ReportSummary {
+  range: { from: string; to: string };
+  dispatches: {
+    total: number;
+    completados: number;
+    cancelados: number;
+    activos: number;
+    distanciaKm: number;
+    tiempoPromedioMin: number;
+  };
+  perDay: Array<{
+    fecha: string;
+    despachos: number;
+    completados: number;
+    distanciaKm: number;
+  }>;
+  topVehicles: Array<{
+    placa: string;
+    conductor?: string | null;
+    despachos: number;
+    distanciaKm: number;
+  }>;
+  fleet: { total: number; libre: number; enRuta: number };
+  orders: {
+    total: number;
+    pendientes: number;
+    asignadas: number;
+    completadas: number;
+    canceladas: number;
+  };
+  alerts: { total: number; noLeidas: number; criticas: number };
 }
 
 export interface RouteGeometry {

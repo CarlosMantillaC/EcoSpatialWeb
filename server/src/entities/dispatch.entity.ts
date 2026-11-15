@@ -35,6 +35,14 @@ export class Dispatch {
   @Column({ name: 'vehicle_id', type: 'uuid', nullable: true })
   vehicleId?: string | null;
 
+  /** Orden de servicio que origino este despacho (opcional: viaje ad-hoc). */
+  @Column({ name: 'order_id', type: 'uuid', nullable: true })
+  orderId?: string | null;
+
+  /** Momento de cierre del servicio (completado); null si sigue activo. */
+  @Column({ name: 'completed_at', type: 'timestamptz', nullable: true })
+  completedAt?: Date | null;
+
   @Column({ name: 'distance_km', type: 'double precision', nullable: true })
   distanceKm?: number | null;
 

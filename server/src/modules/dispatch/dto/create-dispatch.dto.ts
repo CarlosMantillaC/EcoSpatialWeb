@@ -21,4 +21,9 @@ export class CreateDispatchDto {
   @IsOptional()
   @IsUUID()
   vehicleId?: string;
+
+  /** Orden de servicio que origina el viaje (opcional: despacho ad-hoc). */
+  @IsOptional()
+  @IsUUID()
+  orderId?: string;
 }

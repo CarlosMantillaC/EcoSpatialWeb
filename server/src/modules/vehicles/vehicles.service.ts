@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Vehicle, VehicleStatus } from '../../entities/vehicle.entity';
 import { Coords, haversineKm } from '../../common/geo';
+import { DriversService } from '../drivers/drivers.service';
 import { CreateVehicleDto } from './dto/create-vehicle.dto';
 import { UpdateVehicleDto } from './dto/update-vehicle.dto';
 
@@ -11,6 +12,7 @@ export class VehiclesService {
   constructor(
     @InjectRepository(Vehicle)
     private readonly vehiclesRepository: Repository<Vehicle>,
+    private readonly driversService: DriversService,
   ) {}
 
   findAll(status?: VehicleStatus): Promise<Vehicle[]> {
@@ -28,15 +30,28 @@ export class VehiclesService {
     return vehicle;
   }
 
-  create(dto: CreateVehicleDto): Promise<Vehicle> {
-    const vehicle = this.vehiclesRepository.create(dto);
+  async create(dto: CreateVehicleDto): Promise<Vehicle> {
+    const data = await this.withDriverName(dto);
+    const vehicle = this.vehiclesRepository.create(data);
     return this.vehiclesRepository.save(vehicle);
   }
 
   async update(id: string, dto: UpdateVehicleDto): Promise<Vehicle> {
     const vehicle = await this.findOne(id);
-    Object.assign(vehicle, dto);
+    Object.assign(vehicle, await this.withDriverName(dto));
     return this.vehiclesRepository.save(vehicle);
+  }
+
+  /**
+   * Si se asigna un conductor, su nombre se denormaliza en `driverName`
+   * para que el frontend lo muestre sin joins.
+   */
+  private async withDriverName<
+    T extends { driverId?: string | null; driverName?: string },
+  >(dto: T): Promise<T> {
+    if (!dto.driverId) return dto;
+    const driver = await this.driversService.findOne(dto.driverId);
+    return { ...dto, driverName: driver.name };
   }
 
   async remove(id: string): Promise<void> {

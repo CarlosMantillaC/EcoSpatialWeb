@@ -12,6 +12,10 @@ import {
   isRouteInsideCucuta,
 } from '../../common/cucuta-boundary';
 import { Vehicle, VehicleStatus } from '../../entities/vehicle.entity';
+import { AlertSeverity, AlertType } from '../../entities/alert.entity';
+import { Driver } from '../../entities/driver.entity';
+import { AlertsService } from '../alerts/alerts.service';
+import { DriversService } from '../drivers/drivers.service';
 import { FleetEventsService } from '../events/fleet-events.service';
 import { DispatchService } from '../dispatch/dispatch.service';
 import { RoutingService } from '../routing/routing.service';
@@ -52,6 +56,12 @@ const DEFAULT_CENTER: Coords = { lat: 7.889, lng: -72.4967 };
 const PAUSE_TICKS_MIN = 4;
 const PAUSE_TICKS_MAX = 8;
 
+/** Umbral de alerta de velocidad para el trafico de fondo (km/h urbanos). */
+const SPEED_ALERT_KMH = 55;
+
+/** Enfriamiento entre alertas del mismo tipo para un mismo vehiculo. */
+const ALERT_COOLDOWN_MS = 5 * 60 * 1000;
+
 @Injectable()
 export class SimulatorService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(SimulatorService.name);
@@ -66,6 +76,9 @@ export class SimulatorService implements OnModuleInit, OnModuleDestroy {
   /** Ticks restantes de pausa (estacionado) por vehiculo. */
   private readonly pausedTicks = new Map<string, number>();
 
+  /** Enfriamiento de alertas repetidas, por `tipo:vehiculo`. */
+  private readonly alertCooldown = new Map<string, number>();
+
   private intervalSec = 3;
 
   /** Aviso unico cuando el centro configurado esta fuera de Cucuta. */
@@ -73,9 +86,11 @@ export class SimulatorService implements OnModuleInit, OnModuleDestroy {
 
   constructor(
     private readonly vehiclesService: VehiclesService,
+    private readonly driversService: DriversService,
     private readonly dispatchService: DispatchService,
     private readonly routingService: RoutingService,
     private readonly fleetEvents: FleetEventsService,
+    private readonly alertsService: AlertsService,
     private readonly config: ConfigService,
     private readonly schedulerRegistry: SchedulerRegistry,
   ) {}
@@ -87,7 +102,8 @@ export class SimulatorService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    await this.seedIfEmpty();
+    const drivers = await this.seedDriversIfEmpty();
+    await this.seedIfEmpty(drivers);
     await this.publishFleet();
 
     this.intervalSec =
@@ -108,7 +124,31 @@ export class SimulatorService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async seedIfEmpty() {
+  /** Crea la plantilla de conductores si la tabla esta vacia. */
+  private async seedDriversIfEmpty(): Promise<Driver[]> {
+    const count = await this.driversService.count();
+    if (count > 0) return this.driversService.findAll();
+
+    const drivers: Driver[] = [];
+    for (const name of DRIVERS) {
+      drivers.push(
+        await this.driversService.create({
+          name,
+          license: `LIC-${1000 + Math.floor(Math.random() * 9000)}`,
+        }),
+      );
+    }
+    this.logger.log(`Plantilla de conductores sembrada (${drivers.length})`);
+    return drivers;
+  }
+
+  /**
+   * Vincula conductores existentes a vehiculos por nombre (bases de datos
+   * previas a la entidad Driver) y siembra la flota si esta vacia.
+   */
+  private async seedIfEmpty(drivers: Driver[]) {
+    await this.linkDriversByName(drivers);
+
     const count = await this.vehiclesService.count();
     if (count > 0) return;
 
@@ -117,6 +157,7 @@ export class SimulatorService implements OnModuleInit, OnModuleDestroy {
 
     for (let i = 0; i < total; i += 1) {
       const onRoute = Math.random() < 0.25;
+      const driver = drivers[i % drivers.length];
       // Punto aleatorio del area (dentro del perimetro de Cucuta); luego
       // queda "snapped" a una calle real en cuanto el simulador le asigna
       // su primera ruta.
@@ -129,7 +170,8 @@ export class SimulatorService implements OnModuleInit, OnModuleDestroy {
       );
       await this.vehiclesService.create({
         plate: `PBA-${1000 + Math.floor(Math.random() * 9000)}`,
-        driverName: DRIVERS[i % DRIVERS.length],
+        driverId: driver?.id ?? null,
+        driverName: driver?.name ?? DRIVERS[i % DRIVERS.length],
         cargoType: CARGOS[i % CARGOS.length],
         status: onRoute ? VehicleStatus.ON_ROUTE : VehicleStatus.FREE,
         lat: point.lat,
@@ -137,6 +179,19 @@ export class SimulatorService implements OnModuleInit, OnModuleDestroy {
       });
     }
     this.logger.log(`Flota inicial sembrada con ${total} vehiculos`);
+  }
+
+  /** Asocia por nombre los conductores a vehiculos sin `driverId`. */
+  private async linkDriversByName(drivers: Driver[]) {
+    if (drivers.length === 0) return;
+    const byName = new Map(drivers.map((driver) => [driver.name, driver]));
+    const vehicles = await this.vehiclesService.findAll();
+    for (const vehicle of vehicles) {
+      if (vehicle.driverId || !vehicle.driverName) continue;
+      const driver = byName.get(vehicle.driverName);
+      if (!driver) continue;
+      await this.vehiclesService.update(vehicle.id, { driverId: driver.id });
+    }
   }
 
   private async tick() {
@@ -204,6 +259,12 @@ export class SimulatorService implements OnModuleInit, OnModuleDestroy {
       this.wanderers.delete(vehicle.id);
       const safe = this.randomPointInArea();
       await this.vehiclesService.updatePosition(vehicle.id, safe);
+      await this.maybeAlert(
+        AlertType.GEOFENCE,
+        vehicle,
+        `El vehiculo ${vehicle.plate} salio del perimetro de operacion y fue reubicado dentro de Cucuta`,
+        AlertSeverity.WARNING,
+      );
       return;
     }
 
@@ -237,6 +298,12 @@ export class SimulatorService implements OnModuleInit, OnModuleDestroy {
     ) {
       from = this.randomPointInArea();
       await this.vehiclesService.updatePosition(vehicle.id, from);
+      await this.maybeAlert(
+        AlertType.GEOFENCE,
+        vehicle,
+        `El vehiculo ${vehicle.plate} estaba fuera del area de operacion y fue reubicado dentro de Cucuta`,
+        AlertSeverity.WARNING,
+      );
     }
 
     // El destino se descarta y se sortea de nuevo si la ruta real de
@@ -256,6 +323,18 @@ export class SimulatorService implements OnModuleInit, OnModuleDestroy {
             `Ruta de deambulacion de ${vehicle.plate} sale de Cucuta; se reintenta`,
           );
           continue;
+        }
+        const speedKmh =
+          route.distanceKm / Math.max(route.durationMin / 60, 0.01);
+        if (speedKmh > SPEED_ALERT_KMH) {
+          await this.maybeAlert(
+            AlertType.SPEED,
+            vehicle,
+            `El vehiculo ${vehicle.plate} registro ${speedKmh.toFixed(
+              0,
+            )} km/h en su ruta (limite urbano ${SPEED_ALERT_KMH} km/h)`,
+            AlertSeverity.WARNING,
+          );
         }
         return {
           geometry: route.geometry.coordinates,
@@ -343,6 +422,35 @@ export class SimulatorService implements OnModuleInit, OnModuleDestroy {
       );
     }
     return DEFAULT_CENTER;
+  }
+
+  /**
+   * Genera una alerta como maximo una cada ALERT_COOLDOWN_MS por vehiculo
+   * y tipo: el trafico simulado no debe saturar la campana de notificaciones.
+   */
+  private async maybeAlert(
+    type: AlertType,
+    vehicle: Vehicle,
+    message: string,
+    severity: AlertSeverity,
+  ): Promise<void> {
+    const key = `${type}:${vehicle.id}`;
+    const now = Date.now();
+    const last = this.alertCooldown.get(key) ?? 0;
+    if (now - last < ALERT_COOLDOWN_MS) return;
+    this.alertCooldown.set(key, now);
+    try {
+      await this.alertsService.create({
+        type,
+        severity,
+        message,
+        vehicleId: vehicle.id,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo generar la alerta ${type}: ${(error as Error).message}`,
+      );
+    }
   }
 
   /** Emite el estado completo de flota a los clientes SSE. */

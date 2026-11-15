@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/auth';
+import { NotificationBell } from './NotificationBell';
 import { ThemeToggle } from './ThemeToggle';
 
 export function AppHeader() {
@@ -36,6 +37,7 @@ export function AppHeader() {
             {user?.email}
           </p>
         </div>
+        <NotificationBell />
         <ThemeToggle />
         <button
           type="button"
