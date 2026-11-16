@@ -1,10 +1,12 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useFleetStore, type FleetFilter } from '../../store/fleet';
 import { useMapStore } from '../../store/map';
 import type { ActiveDispatch, Vehicle } from '../../types';
+import { NewVehicleForm } from './NewVehicleForm';
 
 const FILTERS: { id: FleetFilter; label: string }[] = [
   { id: 'all', label: 'Todos' },
+  { id: 'sin_conductor', label: 'Libres' },
   { id: 'libre', label: 'Disponibles' },
   { id: 'en_ruta', label: 'En ruta' },
   { id: 'no_disponible', label: 'No disp.' },
@@ -24,11 +26,14 @@ function StatusPill({ status }: { status: Vehicle['status'] }) {
       'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400',
     no_disponible:
       'bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-400',
+    sin_conductor:
+      'bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-400',
   };
   const labels: Record<Vehicle['status'], string> = {
     libre: 'Disponible',
     en_ruta: 'En ruta',
     no_disponible: 'No disponible',
+    sin_conductor: 'Libre',
   };
   return (
     <span
@@ -153,6 +158,7 @@ export function FleetPanel() {
   const activeDispatches = useFleetStore((state) => state.activeDispatches);
   const setFilter = useFleetStore((state) => state.setFilter);
   const refresh = useFleetStore((state) => state.refresh);
+  const [showCreateForm, setShowCreateForm] = useState(false);
 
   const dispatchByVehicle = new Map(
     activeDispatches.map((view) => [view.vehicle.id, view]),
@@ -164,46 +170,72 @@ export function FleetPanel() {
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
           Flota
         </h2>
-        <button
-          type="button"
-          onClick={() => void refresh()}
-          disabled={loading}
-          className="rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100 disabled:opacity-40 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-        >
-          Refrescar
-        </button>
+        <div className="flex gap-1.5">
+          <button
+            type="button"
+            onClick={() => setShowCreateForm(!showCreateForm)}
+            className="rounded-lg bg-emerald-600 px-2 py-1 text-xs font-semibold text-white hover:bg-emerald-700"
+          >
+            {showCreateForm ? 'Cerrar' : 'Nuevo vehiculo'}
+          </button>
+          <button
+            type="button"
+            onClick={() => void refresh()}
+            disabled={loading}
+            className="rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100 disabled:opacity-40 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+          >
+            Refrescar
+          </button>
+        </div>
       </div>
 
-      <div className="mb-3 grid grid-cols-4 gap-1.5">
-        <div className="rounded-xl bg-slate-100 p-2 text-center dark:bg-slate-800">
-          <p className="text-base font-bold text-slate-900 dark:text-white">
+      {showCreateForm && (
+        <div className="mb-3">
+          <NewVehicleForm
+            onCreated={() => setShowCreateForm(false)}
+            onCancel={() => setShowCreateForm(false)}
+          />
+        </div>
+      )}
+
+      <div className="mb-3 grid grid-cols-5 gap-1">
+        <div className="rounded-xl bg-slate-100 p-1.5 text-center dark:bg-slate-800">
+          <p className="text-sm font-bold text-slate-900 dark:text-white">
             {stats.total}
           </p>
-          <p className="text-[10px] uppercase text-slate-500 dark:text-slate-400">
+          <p className="text-[9px] uppercase text-slate-500 dark:text-slate-400">
             Total
           </p>
         </div>
-        <div className="rounded-xl bg-emerald-50 p-2 text-center dark:bg-emerald-950/40">
-          <p className="text-base font-bold text-emerald-700 dark:text-emerald-400">
-            {stats.libre}
+        <div className="rounded-xl bg-violet-50 p-1.5 text-center dark:bg-violet-950/40">
+          <p className="text-sm font-bold text-violet-700 dark:text-violet-400">
+            {stats.sin_conductor}
           </p>
-          <p className="text-[10px] uppercase text-emerald-700/80 dark:text-emerald-400/80">
+          <p className="text-[9px] uppercase text-violet-700/80 dark:text-violet-400/80">
             Libres
           </p>
         </div>
-        <div className="rounded-xl bg-amber-50 p-2 text-center dark:bg-amber-950/40">
-          <p className="text-base font-bold text-amber-700 dark:text-amber-400">
+        <div className="rounded-xl bg-emerald-50 p-1.5 text-center dark:bg-emerald-950/40">
+          <p className="text-sm font-bold text-emerald-700 dark:text-emerald-400">
+            {stats.libre}
+          </p>
+          <p className="text-[9px] uppercase text-emerald-700/80 dark:text-emerald-400/80">
+            Disp.
+          </p>
+        </div>
+        <div className="rounded-xl bg-amber-50 p-1.5 text-center dark:bg-amber-950/40">
+          <p className="text-sm font-bold text-amber-700 dark:text-amber-400">
             {stats.en_ruta}
           </p>
-          <p className="text-[10px] uppercase text-amber-700/80 dark:text-amber-400/80">
+          <p className="text-[9px] uppercase text-amber-700/80 dark:text-amber-400/80">
             En ruta
           </p>
         </div>
-        <div className="rounded-xl bg-slate-100 p-2 text-center dark:bg-slate-800">
-          <p className="text-base font-bold text-slate-600 dark:text-slate-300">
+        <div className="rounded-xl bg-slate-100 p-1.5 text-center dark:bg-slate-800">
+          <p className="text-sm font-bold text-slate-600 dark:text-slate-300">
             {stats.no_disponible}
           </p>
-          <p className="text-[10px] uppercase text-slate-500 dark:text-slate-400">
+          <p className="text-[9px] uppercase text-slate-500 dark:text-slate-400">
             No disp.
           </p>
         </div>

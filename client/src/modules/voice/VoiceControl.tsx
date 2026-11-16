@@ -57,6 +57,9 @@ export function VoiceControl() {
           clearMarkers();
           clearRoute();
           return 'Pantalla limpiada';
+        case 'show_unassigned':
+          void setFilter('sin_conductor');
+          return 'Mostrando vehiculos libres';
         case 'show_orders':
           setOpsTab('ordenes');
           return 'Mostrando ordenes de servicio';

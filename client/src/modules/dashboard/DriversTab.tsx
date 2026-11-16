@@ -32,6 +32,8 @@ export function DriversTab() {
   const [error, setError] = useState<string | null>(null);
   const [driverToDelete, setDriverToDelete] = useState<Driver | null>(null);
   const [driverToDisable, setDriverToDisable] = useState<Driver | null>(null);
+  // Error de asignacion por tarjeta de conductor.
+  const [assignErrors, setAssignErrors] = useState<Record<string, string>>({});
   const [form, setForm] = useState({ name: '', license: '', phone: '' });
 
   async function load() {
@@ -70,6 +72,7 @@ export function DriversTab() {
   async function handleAssign(driver: Driver, value: string) {
     if (!value) return;
     setError(null);
+    setAssignErrors((prev) => ({ ...prev, [driver.id]: '' }));
     const assigned = vehicles.find((vehicle) => vehicle.driverId === driver.id);
     try {
       if (value === 'none') {
@@ -77,21 +80,25 @@ export function DriversTab() {
           await vehiclesApi.update(assigned.id, { driverId: null });
         }
       } else {
+        // Cambio en un paso: si ya tenia vehiculo, se desasigna primero.
+        if (assigned && assigned.id !== value) {
+          await vehiclesApi.update(assigned.id, { driverId: null });
+        }
         await vehiclesApi.update(value, { driverId: driver.id });
       }
       await Promise.all([load(), refreshFleet()]);
     } catch (err: any) {
       const message = err?.response?.data?.message;
-      setError(
-        Array.isArray(message)
+      setAssignErrors((prev) => ({
+        ...prev,
+        [driver.id]: Array.isArray(message)
           ? message.join(', ')
           : (message ?? 'No se pudo asignar el vehiculo.'),
-      );
+      }));
     }
   }
 
-  async function handleStatus(driver: Driver, status: DriverStatus) {
-    await driversApi.update(driver.id, { status });
+  async function handleStatus(driver: Driver, status: DriverStatus) {    await driversApi.update(driver.id, { status });
     // La disponibilidad del conductor cambia la de sus vehiculos:
     // la flota se refresca de inmediato.
     await Promise.all([load(), refreshFleet()]);
@@ -201,7 +208,9 @@ export function DriversTab() {
                       ? 'Disponible'
                       : assigned.status === 'en_ruta'
                         ? 'En ruta'
-                        : 'No disponible'
+                        : assigned.status === 'no_disponible'
+                          ? 'No disponible'
+                          : 'Libre'
                   }`
                 : 'Sin vehiculo asignado'}
             </p>
@@ -217,14 +226,16 @@ export function DriversTab() {
                   {assigned ? 'Cambiar vehiculo...' : 'Asignar vehiculo...'}
                 </option>
                 {assigned && <option value="none">Sin asignar</option>}
-                {vehicles.map((vehicle) => (
-                  <option key={vehicle.id} value={vehicle.id}>
-                    {vehicle.plate}
-                    {vehicle.driverId && vehicle.driverId !== driver.id
-                      ? ` (${vehicle.driverName ?? 'ocupado'})`
-                      : ''}
-                  </option>
-                ))}
+                {assigned && (
+                  <option value={assigned.id}>{assigned.plate} (actual)</option>
+                )}
+                {vehicles
+                  .filter((vehicle) => vehicle.status === 'sin_conductor')
+                  .map((vehicle) => (
+                    <option key={vehicle.id} value={vehicle.id}>
+                      {vehicle.plate}
+                    </option>
+                  ))}
               </select>
               <button
                 type="button"
@@ -248,6 +259,12 @@ export function DriversTab() {
                 X
               </button>
             </div>
+
+            {assignErrors[driver.id] && (
+              <p className="mt-1.5 rounded-lg bg-red-50 p-1.5 text-[10px] text-red-700 dark:bg-red-950/40 dark:text-red-300">
+                {assignErrors[driver.id]}
+              </p>
+            )}
           </div>
         );
       })}

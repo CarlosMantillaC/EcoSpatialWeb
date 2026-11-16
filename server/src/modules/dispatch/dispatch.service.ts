@@ -77,7 +77,7 @@ export class DispatchService {
     const vehicle = await this.vehiclesService.findNearestFree(target);
     if (!vehicle) {
       throw new BadRequestException(
-        'No hay vehiculos disponibles para asignar en este momento',
+        'No hay vehiculos Disponibles para asignar; asigna conductores a los vehiculos Libres',
       );
     }
 
@@ -114,7 +114,7 @@ export class DispatchService {
         : null) ?? (await this.vehiclesService.findNearestFree(target));
     if (!vehicle) {
       throw new BadRequestException(
-        'No hay vehiculos disponibles para asignar en este momento',
+        'No hay vehiculos Disponibles para asignar; asigna conductores a los vehiculos Libres',
       );
     }
 

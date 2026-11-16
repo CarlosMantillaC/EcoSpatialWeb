@@ -107,7 +107,9 @@ async function bootstrap() {
       driverId: driver?.id ?? null,
       driverName: driver?.name ?? null,
       cargoType: CARGOS[i % CARGOS.length],
-      status: onRoute ? VehicleStatus.ON_ROUTE : VehicleStatus.FREE,
+      // Sin conductor el vehiculo queda Libre ("sin_conductor"), salvo el
+      // trafico de fondo sembrado en_ruta.
+      ...(onRoute ? { status: VehicleStatus.ON_ROUTE } : {}),
       lat: position.lat,
       lng: position.lng,
     });

@@ -109,6 +109,7 @@ El micrófono se procesa localmente con la Web Speech API (`es-ES`). El dicciona
 | "mostrar en ruta" | Filtra vehículos `en_ruta` |
 | "mostrar ordenes" / "ver ordenes" | Abre la pestaña Órdenes del panel Operación |
 | "mostrar conductores" | Abre la pestaña Conductores |
+| "mostrar libres" / "vehiculos libres" | Filtra la flota a vehículos Libres (sin conductor) |
 | "mostrar reportes" | Abre la pestaña Reportes |
 | "mostrar auditoria" / "bitacora" | Abre la pestaña Auditoría |
 | "limpiar pantalla" | Oculta marcadores y ruta |
@@ -151,9 +152,17 @@ El panel **Operacion** (columna izquierda del dashboard) agrupa la gestión de n
 
 - Plantilla de conductores (nombre, licencia, teléfono) con estado `disponible | en_viaje | fuera` (mostrado como **No disponible**).
 - Asignación de conductor a vehículo desde el panel (el nombre se sincroniza en el vehículo).
-- **Regla 1:1**: una persona conduce un solo vehículo a la vez y un vehículo tiene un solo conductor. Asignar un conductor que ya conduce otro vehículo (o un vehículo que ya tiene conductor) responde **409** con la instrucción de desasignar primero; el selector ofrece la opción explícita **"Sin asignar"** y marca los vehículos ocupados.
-- **La disponibilidad del conductor manda sobre su vehículo**: al marcar un conductor *no disponible*, sus vehículos libres pasan a `no_disponible` (fuera de servicio: se excluyen de la asignación de despachos, no se muestran como disponibles y quedan estacionados en el simulador). Al marcarlo *disponible* vuelven a `libre`. Un vehículo `en_ruta` nunca se toca: termina su viaje primero.
-- El estado cambia solo: `en_viaje` al aprobar un despacho y `disponible` al completar/cancelar (si el operador marcó al conductor *no disponible* durante el viaje, se respeta su estado).
+- **Regla 1:1**: una persona conduce un solo vehículo a la vez y un vehículo tiene un solo conductor. El selector de cada conductor ofrece solo los vehículos **Libres** (sin conductor) y, si el conductor ya tiene uno, la opción **"Sin asignar"**; elegir otro vehículo lo cambia en un paso. Las violaciones responden **409** con la instrucción de desasignar primero.
+- **Estados del vehículo** (panel Flota):
+  - **Libre** (`sin_conductor`): no tiene conductor; está esperando que se le asigne uno. No recibe despachos.
+  - **Disponible** (`libre`): tiene conductor disponible; es el único que se despacha.
+  - **No disponible** (`no_disponible`): su conductor está fuera; sale de servicio y queda estacionado.
+  - **En ruta** (`en_ruta`): tiene un despacho activo.
+- **Transiciones**: al eliminar o desasignar un conductor, su vehículo pasa a **Libre** para asignarse a otro (si iba en ruta, queda Libre al terminar el viaje). Al crear un vehículo sin conductor también queda Libre.
+- **La disponibilidad del conductor manda sobre su vehículo**: al marcar un conductor *no disponible*, su vehículo pasa a `no_disponible`; al marcarlo *disponible* vuelve a `libre`.
+- **Alta de vehículos**: botón **"Nuevo vehículo"** en el panel Flota (placa, tipo de carga, posición y conductor opcional). La placa es única: una repetida responde 409.
+- El estado del conductor cambia solo: `en_viaje` al aprobar un despacho y `disponible` al completar/cancelar (si el operador marcó al conductor *no disponible* durante el viaje, se respeta su estado).
+- Al arrancar, el servidor repara datos heredados: vehículos sin conductor pasan a Libre y se resuelven vínculos duplicados.
 
 ### Alertas y notificaciones
 

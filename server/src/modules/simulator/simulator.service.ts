@@ -179,7 +179,9 @@ export class SimulatorService implements OnModuleInit, OnModuleDestroy {
         driverId: driver?.id ?? null,
         driverName: driver?.name ?? null,
         cargoType: CARGOS[i % CARGOS.length],
-        status: onRoute ? VehicleStatus.ON_ROUTE : VehicleStatus.FREE,
+        // Sin conductor el vehiculo queda Libre ("sin_conductor"), salvo
+        // el trafico de fondo sembrado en_ruta.
+        ...(onRoute ? { status: VehicleStatus.ON_ROUTE } : {}),
         lat: point.lat,
         lng: point.lng,
       });
@@ -191,8 +193,8 @@ export class SimulatorService implements OnModuleInit, OnModuleDestroy {
    * Repara los vinculos conductor-vehiculo al arrancar (datos heredados
    * de versiones previas). Regla 1:1: un conductor conduce un vehiculo.
    * - Conductores en varios vehiculos: se conserva el vinculo mas antiguo.
-   * - Nombres sin conductor real (borrado con codigo previo al arreglo):
-   *   se limpian y el vehiculo vuelve a estar disponible.
+   * - Vehiculos sin conductor: quedan Libre ("sin_conductor") y se limpia
+   *   cualquier nombre heredado.
    * - Vehiculos sin vinculo cuyo nombre coincide con un conductor: se
    *   vinculan.
    */
@@ -218,15 +220,23 @@ export class SimulatorService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
-    // Nombres sin vinculo: se vinculan si el conductor existe; si no, se
-    // limpian (y `update` libera el vehiculo si estaba `no_disponible`).
+    // Vehiculos sin vinculo: se vinculan si el nombre coincide con un
+    // conductor libre; si no (conductor borrado con datos heredados o
+    // vehiculo nuevo), quedan Libre ("sin_conductor") para asignar a un
+    // conductor nuevo. Un vehiculo en_ruta solo se limpia al terminar.
     for (const vehicle of vehicles) {
-      if (vehicle.driverId || !vehicle.driverName) continue;
-      const driver = byName.get(vehicle.driverName);
+      if (vehicle.driverId) continue;
+      const driver = vehicle.driverName
+        ? byName.get(vehicle.driverName)
+        : undefined;
       if (driver && !linked.has(driver.id)) {
         linked.add(driver.id);
         await this.vehiclesService.update(vehicle.id, { driverId: driver.id });
-      } else {
+      } else if (
+        vehicle.driverName ||
+        vehicle.status === VehicleStatus.FREE ||
+        vehicle.status === VehicleStatus.UNAVAILABLE
+      ) {
         await this.vehiclesService.update(vehicle.id, { driverId: null });
       }
     }
@@ -248,8 +258,11 @@ export class SimulatorService implements OnModuleInit, OnModuleDestroy {
         continue;
       }
 
-      // Fuera de servicio (conductor no disponible): estacionado.
-      if (vehicle.status === VehicleStatus.UNAVAILABLE) {
+      // Fuera de servicio o sin conductor (Libre): estacionado.
+      if (
+        vehicle.status === VehicleStatus.UNAVAILABLE ||
+        vehicle.status === VehicleStatus.UNASSIGNED
+      ) {
         this.wanderers.delete(vehicle.id);
         this.pausedTicks.delete(vehicle.id);
         continue;

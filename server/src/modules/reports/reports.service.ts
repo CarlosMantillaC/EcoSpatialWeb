@@ -226,14 +226,17 @@ export class ReportsService {
   }
 
   private async fleetCounts() {
-    const [total, libre, enRuta] = await Promise.all([
+    const [total, libre, enRuta, sinConductor] = await Promise.all([
       this.vehiclesRepository.count(),
       this.vehiclesRepository.count({ where: { status: VehicleStatus.FREE } }),
       this.vehiclesRepository.count({
         where: { status: VehicleStatus.ON_ROUTE },
       }),
+      this.vehiclesRepository.count({
+        where: { status: VehicleStatus.UNASSIGNED },
+      }),
     ]);
-    return { total, libre, enRuta };
+    return { total, libre, enRuta, sinConductor };
   }
 
   private async orderCounts() {

@@ -1,4 +1,8 @@
-export type VehicleStatus = 'libre' | 'en_ruta' | 'no_disponible';
+export type VehicleStatus =
+  | 'libre'
+  | 'en_ruta'
+  | 'no_disponible'
+  | 'sin_conductor';
 
 export interface Vehicle {
   id: string;
@@ -97,7 +101,7 @@ export interface ReportSummary {
     despachos: number;
     distanciaKm: number;
   }>;
-  fleet: { total: number; libre: number; enRuta: number };
+  fleet: { total: number; libre: number; enRuta: number; sinConductor: number };
   orders: {
     total: number;
     pendientes: number;

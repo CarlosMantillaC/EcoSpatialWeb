@@ -112,8 +112,12 @@ export function ReportsTab() {
               value={String(summary.orders.pendientes)}
             />
             <KpiCard
-              label="Flota libre"
+              label="Disponibles"
               value={`${summary.fleet.libre}/${summary.fleet.total}`}
+            />
+            <KpiCard
+              label="Vehiculos libres"
+              value={String(summary.fleet.sinConductor)}
             />
             <KpiCard
               label="Alertas del periodo"

@@ -20,6 +20,7 @@ export interface FleetStats {
   libre: number;
   en_ruta: number;
   no_disponible: number;
+  sin_conductor: number;
 }
 
 interface FleetState {
@@ -81,6 +82,9 @@ function computeStats(vehicles: Vehicle[]): FleetStats {
     no_disponible: vehicles.filter(
       (vehicle) => vehicle.status === 'no_disponible',
     ).length,
+    sin_conductor: vehicles.filter(
+      (vehicle) => vehicle.status === 'sin_conductor',
+    ).length,
   };
 }
 
@@ -97,11 +101,9 @@ function applyFilter(
   );
 }
 
-/** Vehiculos que no deben ocultarse nunca: con despacho activo o seleccionados. */
-function keepSet(activeDispatches: ActiveDispatch[], selectedId: string | null): Set<string> {
-  const keep = new Set(activeDispatches.map((view) => view.vehicle.id));
-  if (selectedId) keep.add(selectedId);
-  return keep;
+/** Vehiculos que no deben ocultarse nunca: los que tienen despacho activo. */
+function keepSet(activeDispatches: ActiveDispatch[]): Set<string> {
+  return new Set(activeDispatches.map((view) => view.vehicle.id));
 }
 
 function apiMessage(error: any, fallback: string): string {
@@ -113,7 +115,7 @@ function apiMessage(error: any, fallback: string): string {
 export const useFleetStore = create<FleetState>((set, get) => ({
   allVehicles: [],
   vehicles: [],
-  stats: { total: 0, libre: 0, en_ruta: 0, no_disponible: 0 },
+  stats: { total: 0, libre: 0, en_ruta: 0, no_disponible: 0, sin_conductor: 0 },
   filter: 'all',
   activeDispatches: [],
   selectedVehicleId: null,
@@ -135,7 +137,7 @@ export const useFleetStore = create<FleetState>((set, get) => ({
       vehicles: applyFilter(
         update.vehicles,
         filter,
-        keepSet(update.activeDispatches, selectedVehicleId),
+        keepSet(update.activeDispatches),
       ),
       stats: computeStats(update.vehicles),
       activeDispatches: update.activeDispatches,
@@ -161,7 +163,7 @@ export const useFleetStore = create<FleetState>((set, get) => ({
         vehicles: applyFilter(
           vehicles,
           activeFilter,
-          keepSet(activeDispatches, get().selectedVehicleId),
+          keepSet(activeDispatches),
         ),
         stats: computeStats(vehicles),
         activeDispatches,
@@ -208,13 +210,13 @@ export const useFleetStore = create<FleetState>((set, get) => ({
   },
 
   setFilter: (filter) => {
-    const { allVehicles, activeDispatches, selectedVehicleId } = get();
+    const { allVehicles, activeDispatches } = get();
     set({
       filter,
       vehicles: applyFilter(
         allVehicles,
         filter,
-        keepSet(activeDispatches, selectedVehicleId),
+        keepSet(activeDispatches),
       ),
       markersVisible: true,
     });

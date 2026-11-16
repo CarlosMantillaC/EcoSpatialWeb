@@ -45,11 +45,26 @@ export class VehiclesService {
       driverName: driver?.name ?? dto.driverName,
       status:
         dto.status ??
-        (driver?.status === DriverStatus.OFF
-          ? VehicleStatus.UNAVAILABLE
-          : VehicleStatus.FREE),
+        (!driver
+          ? VehicleStatus.UNASSIGNED
+          : driver.status === DriverStatus.OFF
+            ? VehicleStatus.UNAVAILABLE
+            : VehicleStatus.FREE),
     });
-    return this.vehiclesRepository.save(vehicle);
+    try {
+      return await this.vehiclesRepository.save(vehicle);
+    } catch (error) {
+      // Violacion del constraint unique de placa (Postgres: 23505).
+      const code =
+        (error as { code?: string }).code ??
+        (error as { driverError?: { code?: string } }).driverError?.code;
+      if (code === '23505') {
+        throw new ConflictException(
+          `Ya existe un vehiculo con la placa ${dto.plate}`,
+        );
+      }
+      throw error;
+    }
   }
 
   async update(id: string, dto: UpdateVehicleDto): Promise<Vehicle> {
@@ -72,14 +87,11 @@ export class VehiclesService {
         patch.status = this.statusForDriver(driver, vehicle.status);
       }
     } else if (dto.driverId === null) {
-      // Se desasigna el conductor: se limpia el nombre denormalizado y,
-      // si el vehiculo estaba fuera de servicio por el, vuelve a estarlo.
+      // Se desasigna el conductor: el vehiculo queda Libre (sin conductor)
+      // para poder asignarse a otro. Un vehiculo en_ruta termina su viaje.
       patch.driverName = null;
-      if (
-        dto.status === undefined &&
-        vehicle.status === VehicleStatus.UNAVAILABLE
-      ) {
-        patch.status = VehicleStatus.FREE;
+      if (dto.status === undefined && vehicle.status !== VehicleStatus.ON_ROUTE) {
+        patch.status = VehicleStatus.UNASSIGNED;
       }
     }
 
@@ -107,8 +119,9 @@ export class VehiclesService {
   }
 
   /**
-   * Libera el vehiculo tras un viaje: queda `libre` si su conductor esta
-   * disponible y `no_disponible` si el conductor esta fuera.
+   * Libera el vehiculo tras un viaje: `libre` si su conductor esta
+   * disponible, `no_disponible` si esta fuera y `sin_conductor` (Libre)
+   * si no tiene conductor.
    */
   async release(id: string): Promise<Vehicle> {
     const vehicle = await this.findOne(id);
@@ -116,8 +129,9 @@ export class VehiclesService {
       ? await this.driversService.findOne(vehicle.driverId)
       : null;
     return this.update(id, {
-      status:
-        driver?.status === DriverStatus.OFF
+      status: !driver
+        ? VehicleStatus.UNASSIGNED
+        : driver.status === DriverStatus.OFF
           ? VehicleStatus.UNAVAILABLE
           : VehicleStatus.FREE,
     });
@@ -125,14 +139,12 @@ export class VehiclesService {
 
   /** Estado del vehiculo segun la disponibilidad del conductor. */
   private statusForDriver(driver: Driver, current: VehicleStatus): VehicleStatus {
-    if (driver.status === DriverStatus.OFF) {
-      return current === VehicleStatus.ON_ROUTE
-        ? VehicleStatus.ON_ROUTE
-        : VehicleStatus.UNAVAILABLE;
+    if (current === VehicleStatus.ON_ROUTE) {
+      return VehicleStatus.ON_ROUTE;
     }
-    return current === VehicleStatus.UNAVAILABLE
-      ? VehicleStatus.FREE
-      : current;
+    return driver.status === DriverStatus.OFF
+      ? VehicleStatus.UNAVAILABLE
+      : VehicleStatus.FREE;
   }
 
   async remove(id: string): Promise<void> {

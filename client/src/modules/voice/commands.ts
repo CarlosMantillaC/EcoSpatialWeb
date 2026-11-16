@@ -12,7 +12,8 @@ export type VoiceCommandId =
   | 'show_orders'
   | 'show_drivers'
   | 'show_reports'
-  | 'show_audit';
+  | 'show_audit'
+  | 'show_unassigned';
 
 export interface VoiceCommandDefinition {
   id: VoiceCommandId;
@@ -54,6 +55,11 @@ export const VOICE_COMMANDS: VoiceCommandDefinition[] = [
     id: 'clear',
     label: 'Limpiar pantalla',
     phrases: ['limpiar pantalla', 'limpiar mapa', 'limpiar'],
+  },
+  {
+    id: 'show_unassigned',
+    label: 'Mostrar libres',
+    phrases: ['mostrar libres', 'vehiculos libres', 'libres'],
   },
   {
     id: 'show_orders',

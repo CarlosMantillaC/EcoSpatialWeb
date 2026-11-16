@@ -58,17 +58,17 @@ export class DriversService {
         'El conductor tiene un viaje en curso; completa o cancela el despacho antes de eliminarlo',
       );
     }
-    // Sus vehiculos quedan sin conductor y, si estaban fuera de servicio
-    // por el, vuelven a estar disponibles. Un vehiculo en_ruta solo se
-    // desvincula: termina su viaje y se libera solo.
+    // Sus vehiculos quedan sin conductor y pasan a Libre ("sin_conductor")
+    // para poder asignarse a un conductor nuevo. Un vehiculo en_ruta solo
+    // se desvincula: termina su viaje y queda Libre.
     const vehicles = await this.vehiclesRepository.find({
       where: { driverId: id },
     });
     for (const vehicle of vehicles) {
       vehicle.driverId = null;
       vehicle.driverName = null;
-      if (vehicle.status === VehicleStatus.UNAVAILABLE) {
-        vehicle.status = VehicleStatus.FREE;
+      if (vehicle.status !== VehicleStatus.ON_ROUTE) {
+        vehicle.status = VehicleStatus.UNASSIGNED;
       }
       await this.vehiclesRepository.save(vehicle);
     }

@@ -14,6 +14,8 @@ export enum VehicleStatus {
   ON_ROUTE = 'en_ruta',
   /** Fuera de servicio: su conductor no esta disponible. */
   UNAVAILABLE = 'no_disponible',
+  /** Sin conductor ("Libre"): esperando asignacion. */
+  UNASSIGNED = 'sin_conductor',
 }
 
 @Entity('vehicles')

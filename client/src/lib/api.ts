@@ -85,6 +85,13 @@ export const vehiclesApi = {
       .get<Vehicle[]>('/vehicles', { params: status ? { status } : {} })
       .then((r) => r.data),
   listJsonLd: () => api.get('/vehicles', { params: { format: 'jsonld' } }),
+  create: (data: {
+    plate: string;
+    cargoType?: string;
+    lat: number;
+    lng: number;
+    driverId?: string | null;
+  }) => api.post<Vehicle>('/vehicles', data).then((r) => r.data),
   update: (
     id: string,
     data: {

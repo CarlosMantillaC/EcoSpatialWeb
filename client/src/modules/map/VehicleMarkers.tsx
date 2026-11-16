@@ -21,18 +21,21 @@ const ICONS: Record<VehicleStatus, L.DivIcon> = {
   libre: buildIcon('#10b981', '#ffffff'),
   en_ruta: buildIcon('#f59e0b', '#ffffff'),
   no_disponible: buildIcon('#64748b', '#ffffff'),
+  sin_conductor: buildIcon('#8b5cf6', '#ffffff'),
 };
 
 const SELECTED_ICONS: Record<VehicleStatus, L.DivIcon> = {
   libre: buildIcon('#10b981', '#2563eb', true),
   en_ruta: buildIcon('#f59e0b', '#2563eb', true),
   no_disponible: buildIcon('#64748b', '#2563eb', true),
+  sin_conductor: buildIcon('#8b5cf6', '#2563eb', true),
 };
 
 const STATUS_LABEL: Record<VehicleStatus, string> = {
   libre: 'Disponible',
   en_ruta: 'En ruta',
   no_disponible: 'No disponible',
+  sin_conductor: 'Libre',
 };
 
 function formatRemaining(seconds: number): string {
@@ -142,13 +145,16 @@ export function VehicleMarkers() {
 
   return (
     <>
-      {vehicles.map((vehicle) => (
-        <VehicleMarker
-          key={vehicle.id}
-          vehicle={vehicle}
-          activeDispatch={dispatchByVehicle.get(vehicle.id)}
-        />
-      ))}
+      {vehicles
+        // Sin conductor: no se muestran en el mapa (siguen en el panel).
+        .filter((vehicle) => vehicle.status !== 'sin_conductor')
+        .map((vehicle) => (
+          <VehicleMarker
+            key={vehicle.id}
+            vehicle={vehicle}
+            activeDispatch={dispatchByVehicle.get(vehicle.id)}
+          />
+        ))}
     </>
   );
 }
