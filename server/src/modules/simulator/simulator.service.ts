@@ -37,6 +37,10 @@ const DRIVERS = [
   'Diego Rojas',
   'Sofia Nunez',
   'Andres Cevallos',
+  'Paula Rios',
+  'Camilo Diaz',
+  'Valentina Rojas',
+  'Hector Salas',
 ];
 
 const CARGOS = ['general', 'refrigerado', 'fragil', 'express', 'paqueteria'];
@@ -147,7 +151,7 @@ export class SimulatorService implements OnModuleInit, OnModuleDestroy {
    * previas a la entidad Driver) y siembra la flota si esta vacia.
    */
   private async seedIfEmpty(drivers: Driver[]) {
-    await this.linkDriversByName(drivers);
+    await this.repairDriverLinks(drivers);
 
     const count = await this.vehiclesService.count();
     if (count > 0) return;
@@ -157,7 +161,9 @@ export class SimulatorService implements OnModuleInit, OnModuleDestroy {
 
     for (let i = 0; i < total; i += 1) {
       const onRoute = Math.random() < 0.25;
-      const driver = drivers[i % drivers.length];
+      // Regla 1:1 — cada conductor conduce un solo vehiculo; los vehiculos
+      // sobrantes quedan sin conductor y se les puede asignar desde el panel.
+      const driver = i < drivers.length ? drivers[i] : null;
       // Punto aleatorio del area (dentro del perimetro de Cucuta); luego
       // queda "snapped" a una calle real en cuanto el simulador le asigna
       // su primera ruta.
@@ -171,7 +177,7 @@ export class SimulatorService implements OnModuleInit, OnModuleDestroy {
       await this.vehiclesService.create({
         plate: `PBA-${1000 + Math.floor(Math.random() * 9000)}`,
         driverId: driver?.id ?? null,
-        driverName: driver?.name ?? DRIVERS[i % DRIVERS.length],
+        driverName: driver?.name ?? null,
         cargoType: CARGOS[i % CARGOS.length],
         status: onRoute ? VehicleStatus.ON_ROUTE : VehicleStatus.FREE,
         lat: point.lat,
@@ -181,16 +187,48 @@ export class SimulatorService implements OnModuleInit, OnModuleDestroy {
     this.logger.log(`Flota inicial sembrada con ${total} vehiculos`);
   }
 
-  /** Asocia por nombre los conductores a vehiculos sin `driverId`. */
-  private async linkDriversByName(drivers: Driver[]) {
-    if (drivers.length === 0) return;
+  /**
+   * Repara los vinculos conductor-vehiculo al arrancar (datos heredados
+   * de versiones previas). Regla 1:1: un conductor conduce un vehiculo.
+   * - Conductores en varios vehiculos: se conserva el vinculo mas antiguo.
+   * - Nombres sin conductor real (borrado con codigo previo al arreglo):
+   *   se limpian y el vehiculo vuelve a estar disponible.
+   * - Vehiculos sin vinculo cuyo nombre coincide con un conductor: se
+   *   vinculan.
+   */
+  private async repairDriverLinks(drivers: Driver[]) {
     const byName = new Map(drivers.map((driver) => [driver.name, driver]));
+    const byId = new Map(drivers.map((driver) => [driver.id, driver]));
     const vehicles = await this.vehiclesService.findAll();
+    const linked = new Set<string>();
+
+    // Vinculos existentes: un solo vehiculo por conductor.
+    for (const vehicle of vehicles) {
+      if (!vehicle.driverId) continue;
+      if (linked.has(vehicle.driverId)) {
+        await this.vehiclesService.update(vehicle.id, { driverId: null });
+        continue;
+      }
+      linked.add(vehicle.driverId);
+      const driver = byId.get(vehicle.driverId);
+      if (driver && vehicle.driverName !== driver.name) {
+        await this.vehiclesService.update(vehicle.id, {
+          driverName: driver.name,
+        });
+      }
+    }
+
+    // Nombres sin vinculo: se vinculan si el conductor existe; si no, se
+    // limpian (y `update` libera el vehiculo si estaba `no_disponible`).
     for (const vehicle of vehicles) {
       if (vehicle.driverId || !vehicle.driverName) continue;
       const driver = byName.get(vehicle.driverName);
-      if (!driver) continue;
-      await this.vehiclesService.update(vehicle.id, { driverId: driver.id });
+      if (driver && !linked.has(driver.id)) {
+        linked.add(driver.id);
+        await this.vehiclesService.update(vehicle.id, { driverId: driver.id });
+      } else {
+        await this.vehiclesService.update(vehicle.id, { driverId: null });
+      }
     }
   }
 
@@ -210,10 +248,18 @@ export class SimulatorService implements OnModuleInit, OnModuleDestroy {
         continue;
       }
 
+      // Fuera de servicio (conductor no disponible): estacionado.
+      if (vehicle.status === VehicleStatus.UNAVAILABLE) {
+        this.wanderers.delete(vehicle.id);
+        this.pausedTicks.delete(vehicle.id);
+        continue;
+      }
+
       // Trafico de fondo: solo los "en_ruta" sin despacho se liberan
-      // solos. Nunca un vehiculo con viaje asignado.
+      // solos. Nunca un vehiculo con viaje asignado. `release` respeta
+      // la disponibilidad del conductor.
       if (vehicle.status === VehicleStatus.ON_ROUTE && Math.random() < 0.1) {
-        await this.vehiclesService.setStatus(vehicle.id, VehicleStatus.FREE);
+        await this.vehiclesService.release(vehicle.id);
       }
 
       await this.advanceWanderer(vehicle, () => {

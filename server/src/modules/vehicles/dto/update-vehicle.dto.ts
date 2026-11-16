@@ -15,7 +15,7 @@ export class UpdateVehicleDto {
 
   @IsOptional()
   @IsString()
-  driverName?: string;
+  driverName?: string | null;
 
   /** Conductor asignado; `driverName` se sincroniza con su nombre. */
   @IsOptional()

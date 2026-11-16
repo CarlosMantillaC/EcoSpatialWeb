@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { ordersApi } from '../../lib/api';
 import { useFleetStore } from '../../store/fleet';
 import { useOpsStore } from '../../store/ops';
@@ -38,6 +39,8 @@ export function OrdersTab() {
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [orderToDelete, setOrderToDelete] = useState<ServiceOrder | null>(null);
+  const [orderToCancel, setOrderToCancel] = useState<ServiceOrder | null>(null);
   const [form, setForm] = useState({
     clientName: '',
     contact: '',
@@ -81,6 +84,34 @@ export function OrdersTab() {
     }
   }
 
+  async function handleCancel(id: string) {
+    setError(null);
+    try {
+      await cancelOrder(id);
+    } catch (err: any) {
+      const message = err?.response?.data?.message;
+      setError(
+        Array.isArray(message)
+          ? message.join(', ')
+          : (message ?? 'No se pudo cancelar la orden.'),
+      );
+    }
+  }
+
+  async function handleRemove(id: string) {
+    setError(null);
+    try {
+      await removeOrder(id);
+    } catch (err: any) {
+      const message = err?.response?.data?.message;
+      setError(
+        Array.isArray(message)
+          ? message.join(', ')
+          : (message ?? 'No se pudo eliminar la orden.'),
+      );
+    }
+  }
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
@@ -95,6 +126,12 @@ export function OrdersTab() {
           {showForm ? 'Cerrar' : 'Nueva orden'}
         </button>
       </div>
+
+      {error && (
+        <p className="rounded-lg bg-red-50 p-2 text-xs text-red-700 dark:bg-red-950/40 dark:text-red-300">
+          {error}
+        </p>
+      )}
 
       {showForm && (
         <form onSubmit={handleCreate} className="space-y-2 rounded-xl bg-slate-50 p-3 dark:bg-slate-800/60">
@@ -158,7 +195,6 @@ export function OrdersTab() {
             value={form.notes}
             onChange={(e) => setForm({ ...form, notes: e.target.value })}
           />
-          {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
           <button
             type="submit"
             disabled={saving}
@@ -211,14 +247,14 @@ export function OrdersTab() {
               </button>
               <button
                 type="button"
-                onClick={() => void cancelOrder(order.id)}
+                onClick={() => setOrderToCancel(order)}
                 className="rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
               >
                 Cancelar
               </button>
               <button
                 type="button"
-                onClick={() => void removeOrder(order.id)}
+                onClick={() => setOrderToDelete(order)}
                 title="Eliminar orden"
                 className="rounded-lg border border-slate-200 px-2 py-1 text-xs text-red-500 hover:bg-red-50 dark:border-slate-700 dark:hover:bg-red-950/40"
               >
@@ -234,6 +270,32 @@ export function OrdersTab() {
           No hay ordenes registradas. Crea la primera con "Nueva orden".
         </p>
       )}
+
+      <ConfirmDialog
+        open={orderToCancel !== null}
+        title="Cancelar orden"
+        message={`¿Cancelar la orden de ${orderToCancel?.clientName}? Pasara a estado cancelada y ya no podra despacharse.`}
+        confirmLabel="Si, cancelar"
+        onCancel={() => setOrderToCancel(null)}
+        onConfirm={() => {
+          const order = orderToCancel;
+          setOrderToCancel(null);
+          if (order) void handleCancel(order.id);
+        }}
+      />
+
+      <ConfirmDialog
+        open={orderToDelete !== null}
+        title="Eliminar orden"
+        message={`¿Eliminar la orden de ${orderToDelete?.clientName}? Esta accion no se puede deshacer.`}
+        confirmLabel="Eliminar"
+        onCancel={() => setOrderToDelete(null)}
+        onConfirm={() => {
+          const order = orderToDelete;
+          setOrderToDelete(null);
+          if (order) void handleRemove(order.id);
+        }}
+      />
     </div>
   );
 }

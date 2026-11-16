@@ -1,7 +1,13 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Driver, DriverStatus } from '../../entities/driver.entity';
+import { Vehicle, VehicleStatus } from '../../entities/vehicle.entity';
+import { definedProps } from '../../common/objects';
 import { CreateDriverDto } from './dto/create-driver.dto';
 import { UpdateDriverDto } from './dto/update-driver.dto';
 
@@ -10,6 +16,8 @@ export class DriversService {
   constructor(
     @InjectRepository(Driver)
     private readonly driversRepository: Repository<Driver>,
+    @InjectRepository(Vehicle)
+    private readonly vehiclesRepository: Repository<Vehicle>,
   ) {}
 
   findAll(status?: DriverStatus): Promise<Driver[]> {
@@ -34,17 +42,67 @@ export class DriversService {
 
   async update(id: string, dto: UpdateDriverDto): Promise<Driver> {
     const driver = await this.findOne(id);
-    Object.assign(driver, dto);
-    return this.driversRepository.save(driver);
+    Object.assign(driver, definedProps(dto));
+    const saved = await this.driversRepository.save(driver);
+    // La disponibilidad del conductor manda sobre sus vehiculos.
+    if (dto.status !== undefined) {
+      await this.syncVehicles(saved);
+    }
+    return saved;
   }
 
   async remove(id: string): Promise<void> {
     const driver = await this.findOne(id);
+    if (driver.status === DriverStatus.ON_TRIP) {
+      throw new BadRequestException(
+        'El conductor tiene un viaje en curso; completa o cancela el despacho antes de eliminarlo',
+      );
+    }
+    // Sus vehiculos quedan sin conductor y, si estaban fuera de servicio
+    // por el, vuelven a estar disponibles. Un vehiculo en_ruta solo se
+    // desvincula: termina su viaje y se libera solo.
+    const vehicles = await this.vehiclesRepository.find({
+      where: { driverId: id },
+    });
+    for (const vehicle of vehicles) {
+      vehicle.driverId = null;
+      vehicle.driverName = null;
+      if (vehicle.status === VehicleStatus.UNAVAILABLE) {
+        vehicle.status = VehicleStatus.FREE;
+      }
+      await this.vehiclesRepository.save(vehicle);
+    }
     await this.driversRepository.remove(driver);
   }
 
   async setStatus(id: string, status: DriverStatus): Promise<Driver> {
     return this.update(id, { status });
+  }
+
+  /**
+   * Los vehiculos siguen la disponibilidad del conductor: si se marca
+   * `fuera`, sus vehiculos libres quedan `no_disponible` (y viceversa).
+   * Un vehiculo `en_ruta` nunca se toca: termina su viaje primero.
+   */
+  private async syncVehicles(driver: Driver): Promise<void> {
+    const vehicles = await this.vehiclesRepository.find({
+      where: { driverId: driver.id },
+    });
+    for (const vehicle of vehicles) {
+      if (
+        driver.status === DriverStatus.OFF &&
+        vehicle.status === VehicleStatus.FREE
+      ) {
+        vehicle.status = VehicleStatus.UNAVAILABLE;
+        await this.vehiclesRepository.save(vehicle);
+      } else if (
+        driver.status === DriverStatus.AVAILABLE &&
+        vehicle.status === VehicleStatus.UNAVAILABLE
+      ) {
+        vehicle.status = VehicleStatus.FREE;
+        await this.vehiclesRepository.save(vehicle);
+      }
+    }
   }
 
   count(): Promise<number> {

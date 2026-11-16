@@ -149,9 +149,11 @@ El panel **Operacion** (columna izquierda del dashboard) agrupa la gestión de n
 
 ### Conductores
 
-- Plantilla de conductores (nombre, licencia, teléfono) con estado `disponible | en_viaje | fuera`.
+- Plantilla de conductores (nombre, licencia, teléfono) con estado `disponible | en_viaje | fuera` (mostrado como **No disponible**).
 - Asignación de conductor a vehículo desde el panel (el nombre se sincroniza en el vehículo).
-- El estado cambia solo: `en_viaje` al aprobar un despacho y `disponible` al completar/cancelar.
+- **Regla 1:1**: una persona conduce un solo vehículo a la vez y un vehículo tiene un solo conductor. Asignar un conductor que ya conduce otro vehículo (o un vehículo que ya tiene conductor) responde **409** con la instrucción de desasignar primero; el selector ofrece la opción explícita **"Sin asignar"** y marca los vehículos ocupados.
+- **La disponibilidad del conductor manda sobre su vehículo**: al marcar un conductor *no disponible*, sus vehículos libres pasan a `no_disponible` (fuera de servicio: se excluyen de la asignación de despachos, no se muestran como disponibles y quedan estacionados en el simulador). Al marcarlo *disponible* vuelven a `libre`. Un vehículo `en_ruta` nunca se toca: termina su viaje primero.
+- El estado cambia solo: `en_viaje` al aprobar un despacho y `disponible` al completar/cancelar (si el operador marcó al conductor *no disponible* durante el viaje, se respeta su estado).
 
 ### Alertas y notificaciones
 

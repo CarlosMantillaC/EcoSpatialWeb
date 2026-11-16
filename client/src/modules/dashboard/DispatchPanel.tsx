@@ -1,6 +1,9 @@
+import { useState } from 'react';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useFleetStore } from '../../store/fleet';
 
 export function DispatchPanel() {
+  const [confirmCancel, setConfirmCancel] = useState(false);
   const lastDispatch = useFleetStore((state) => state.lastDispatch);
   const preview = useFleetStore((state) => state.preview);
   const pendingOrder = useFleetStore((state) => state.pendingOrder);
@@ -187,7 +190,7 @@ export function DispatchPanel() {
             </button>
             <button
               type="button"
-              onClick={() => void cancelLastDispatch()}
+              onClick={() => setConfirmCancel(true)}
               disabled={loading}
               className="rounded-xl border border-red-200 px-3 py-2 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/40"
             >
@@ -204,6 +207,18 @@ export function DispatchPanel() {
           </button>
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmCancel}
+        title="Cancelar despacho"
+        message="¿Cancelar el viaje en curso? El vehiculo quedara liberado y el servicio no se completara."
+        confirmLabel="Si, cancelar"
+        onCancel={() => setConfirmCancel(false)}
+        onConfirm={() => {
+          setConfirmCancel(false);
+          void cancelLastDispatch();
+        }}
+      />
     </div>
   );
 }

@@ -263,10 +263,7 @@ export class DispatchService {
     let vehicle: Vehicle | null = null;
     if (dispatch.vehicleId) {
       vehicle = await this.vehiclesService.findOne(dispatch.vehicleId);
-      await this.vehiclesService.setStatus(
-        dispatch.vehicleId,
-        VehicleStatus.FREE,
-      );
+      await this.vehiclesService.release(dispatch.vehicleId);
     }
     dispatch.status = DispatchStatus.COMPLETED;
     dispatch.completedAt = new Date();
@@ -281,12 +278,7 @@ export class DispatchService {
         await this.ordersRepository.save(order);
       }
     }
-    if (vehicle?.driverId) {
-      await this.driversService.setStatus(
-        vehicle.driverId,
-        DriverStatus.AVAILABLE,
-      );
-    }
+    await this.releaseDriver(vehicle);
 
     await this.alertsService.create({
       type: AlertType.ARRIVAL,
@@ -310,10 +302,7 @@ export class DispatchService {
     let vehicle: Vehicle | null = null;
     if (dispatch.vehicleId) {
       vehicle = await this.vehiclesService.findOne(dispatch.vehicleId);
-      await this.vehiclesService.setStatus(
-        dispatch.vehicleId,
-        VehicleStatus.FREE,
-      );
+      await this.vehiclesService.release(dispatch.vehicleId);
     }
     dispatch.status = DispatchStatus.CANCELLED;
     const saved = await this.dispatchesRepository.save(dispatch);
@@ -329,13 +318,23 @@ export class DispatchService {
         await this.ordersRepository.save(order);
       }
     }
-    if (vehicle?.driverId) {
+    await this.releaseDriver(vehicle);
+
+    return saved;
+  }
+
+  /**
+   * Devuelve el conductor a `disponible` al cerrar el viaje. Si el
+   * operador lo marco `fuera` durante el trayecto, se respeta su estado.
+   */
+  private async releaseDriver(vehicle: Vehicle | null): Promise<void> {
+    if (!vehicle?.driverId) return;
+    const driver = await this.driversService.findOne(vehicle.driverId);
+    if (driver.status === DriverStatus.ON_TRIP) {
       await this.driversService.setStatus(
         vehicle.driverId,
         DriverStatus.AVAILABLE,
       );
     }
-
-    return saved;
   }
 }

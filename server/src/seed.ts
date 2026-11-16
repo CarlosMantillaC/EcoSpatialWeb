@@ -17,6 +17,10 @@ const DRIVERS = [
   'Diego Rojas',
   'Sofia Nunez',
   'Andres Cevallos',
+  'Paula Rios',
+  'Camilo Diaz',
+  'Valentina Rojas',
+  'Hector Salas',
 ];
 
 const CARGOS = ['general', 'refrigerado', 'fragil', 'express', 'paqueteria'];
@@ -89,7 +93,9 @@ async function bootstrap() {
 
   for (let i = 0; i < total; i += 1) {
     const onRoute = Math.random() < 0.25;
-    const driver = drivers[i % drivers.length];
+    // Regla 1:1 — cada conductor conduce un solo vehiculo; los vehiculos
+    // sobrantes quedan sin conductor.
+    const driver = i < drivers.length ? drivers[i] : null;
     // Punto aleatorio del area, luego "snapped" a la calle real mas
     // cercana via OSRM (el primer vertice de una ruta corta). Si OSRM
     // no responde se usa el punto tal cual.
@@ -98,8 +104,8 @@ async function bootstrap() {
 
     await vehiclesService.create({
       plate: `PBA-${1000 + Math.floor(Math.random() * 9000)}`,
-      driverId: driver.id,
-      driverName: driver.name,
+      driverId: driver?.id ?? null,
+      driverName: driver?.name ?? null,
       cargoType: CARGOS[i % CARGOS.length],
       status: onRoute ? VehicleStatus.ON_ROUTE : VehicleStatus.FREE,
       lat: position.lat,

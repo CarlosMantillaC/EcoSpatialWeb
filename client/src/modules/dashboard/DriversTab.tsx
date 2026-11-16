@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { driversApi, vehiclesApi } from '../../lib/api';
 import { useFleetStore } from '../../store/fleet';
 import type { Driver, DriverStatus } from '../../types';
@@ -7,7 +8,13 @@ const STATUS_STYLE: Record<DriverStatus, string> = {
   disponible:
     'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300',
   en_viaje: 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300',
-  fuera: 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400',
+  fuera: 'bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-400',
+};
+
+const STATUS_LABEL: Record<DriverStatus, string> = {
+  disponible: 'Disponible',
+  en_viaje: 'En viaje',
+  fuera: 'No disponible',
 };
 
 const INPUT =
@@ -23,6 +30,8 @@ export function DriversTab() {
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [driverToDelete, setDriverToDelete] = useState<Driver | null>(null);
+  const [driverToDisable, setDriverToDisable] = useState<Driver | null>(null);
   const [form, setForm] = useState({ name: '', license: '', phone: '' });
 
   async function load() {
@@ -58,24 +67,49 @@ export function DriversTab() {
     }
   }
 
-  async function handleAssign(driverId: string, vehicleId: string) {
-    if (!vehicleId) return;
+  async function handleAssign(driver: Driver, value: string) {
+    if (!value) return;
+    setError(null);
+    const assigned = vehicles.find((vehicle) => vehicle.driverId === driver.id);
     try {
-      await vehiclesApi.update(vehicleId, { driverId });
+      if (value === 'none') {
+        if (assigned) {
+          await vehiclesApi.update(assigned.id, { driverId: null });
+        }
+      } else {
+        await vehiclesApi.update(value, { driverId: driver.id });
+      }
       await Promise.all([load(), refreshFleet()]);
-    } catch {
-      setError('No se pudo asignar el vehiculo.');
+    } catch (err: any) {
+      const message = err?.response?.data?.message;
+      setError(
+        Array.isArray(message)
+          ? message.join(', ')
+          : (message ?? 'No se pudo asignar el vehiculo.'),
+      );
     }
   }
 
   async function handleStatus(driver: Driver, status: DriverStatus) {
     await driversApi.update(driver.id, { status });
-    await load();
+    // La disponibilidad del conductor cambia la de sus vehiculos:
+    // la flota se refresca de inmediato.
+    await Promise.all([load(), refreshFleet()]);
   }
 
   async function handleDelete(id: string) {
-    await driversApi.remove(id);
-    await Promise.all([load(), refreshFleet()]);
+    setError(null);
+    try {
+      await driversApi.remove(id);
+      await Promise.all([load(), refreshFleet()]);
+    } catch (err: any) {
+      const message = err?.response?.data?.message;
+      setError(
+        Array.isArray(message)
+          ? message.join(', ')
+          : (message ?? 'No se pudo eliminar el conductor.'),
+      );
+    }
   }
 
   return (
@@ -92,6 +126,12 @@ export function DriversTab() {
           {showForm ? 'Cerrar' : 'Nuevo conductor'}
         </button>
       </div>
+
+      {error && (
+        <p className="rounded-lg bg-red-50 p-2 text-xs text-red-700 dark:bg-red-950/40 dark:text-red-300">
+          {error}
+        </p>
+      )}
 
       {showForm && (
         <form
@@ -117,9 +157,6 @@ export function DriversTab() {
             value={form.phone}
             onChange={(e) => setForm({ ...form, phone: e.target.value })}
           />
-          {error && (
-            <p className="text-xs text-red-600 dark:text-red-400">{error}</p>
-          )}
           <button
             type="submit"
             disabled={saving}
@@ -150,7 +187,7 @@ export function DriversTab() {
               <span
                 className={`ml-auto shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${STATUS_STYLE[driver.status]}`}
               >
-                {driver.status}
+                {STATUS_LABEL[driver.status]}
               </span>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -159,7 +196,13 @@ export function DriversTab() {
             </p>
             <p className="text-xs text-slate-500 dark:text-slate-400">
               {assigned
-                ? `Vehiculo: ${assigned.plate}`
+                ? `Vehiculo: ${assigned.plate} · ${
+                    assigned.status === 'libre'
+                      ? 'Disponible'
+                      : assigned.status === 'en_ruta'
+                        ? 'En ruta'
+                        : 'No disponible'
+                  }`
                 : 'Sin vehiculo asignado'}
             </p>
 
@@ -167,30 +210,38 @@ export function DriversTab() {
               <select
                 className={`${INPUT} flex-1`}
                 value={assigned?.id ?? ''}
-                onChange={(e) => void handleAssign(driver.id, e.target.value)}
+                onChange={(e) => void handleAssign(driver, e.target.value)}
+                title="Un conductor solo puede conducir un vehiculo a la vez"
               >
-                <option value="">Asignar vehiculo...</option>
+                <option value="" disabled>
+                  {assigned ? 'Cambiar vehiculo...' : 'Asignar vehiculo...'}
+                </option>
+                {assigned && <option value="none">Sin asignar</option>}
                 {vehicles.map((vehicle) => (
                   <option key={vehicle.id} value={vehicle.id}>
                     {vehicle.plate}
+                    {vehicle.driverId && vehicle.driverId !== driver.id
+                      ? ` (${vehicle.driverName ?? 'ocupado'})`
+                      : ''}
                   </option>
                 ))}
               </select>
               <button
                 type="button"
                 onClick={() =>
-                  void handleStatus(
-                    driver,
-                    driver.status === 'fuera' ? 'disponible' : 'fuera',
-                  )
+                  driver.status === 'fuera'
+                    ? void handleStatus(driver, 'disponible')
+                    : setDriverToDisable(driver)
                 }
                 className="rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
               >
-                {driver.status === 'fuera' ? 'Activar' : 'Marcar fuera'}
+                {driver.status === 'fuera'
+                  ? 'Marcar disponible'
+                  : 'Marcar no disponible'}
               </button>
               <button
                 type="button"
-                onClick={() => void handleDelete(driver.id)}
+                onClick={() => setDriverToDelete(driver)}
                 title="Eliminar conductor"
                 className="rounded-lg border border-slate-200 px-2 py-1 text-xs text-red-500 hover:bg-red-50 dark:border-slate-700 dark:hover:bg-red-950/40"
               >
@@ -206,6 +257,32 @@ export function DriversTab() {
           No hay conductores registrados.
         </p>
       )}
+
+      <ConfirmDialog
+        open={driverToDisable !== null}
+        title="Marcar no disponible"
+        message={`¿Marcar a ${driverToDisable?.name} como no disponible? Sus vehiculos saldran de servicio y no recibiran nuevos despachos hasta reactivarlo.`}
+        confirmLabel="Si, marcar"
+        onCancel={() => setDriverToDisable(null)}
+        onConfirm={() => {
+          const driver = driverToDisable;
+          setDriverToDisable(null);
+          if (driver) void handleStatus(driver, 'fuera');
+        }}
+      />
+
+      <ConfirmDialog
+        open={driverToDelete !== null}
+        title="Eliminar conductor"
+        message={`¿Eliminar a ${driverToDelete?.name}? Sus vehiculos quedaran sin conductor y disponibles.`}
+        confirmLabel="Eliminar"
+        onCancel={() => setDriverToDelete(null)}
+        onConfirm={() => {
+          const driver = driverToDelete;
+          setDriverToDelete(null);
+          if (driver) void handleDelete(driver.id);
+        }}
+      />
     </div>
   );
 }

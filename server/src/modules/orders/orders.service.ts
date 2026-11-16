@@ -6,6 +6,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { isInsideCucuta } from '../../common/cucuta-boundary';
+import { definedProps } from '../../common/objects';
 import {
   ServiceOrder,
   ServiceOrderStatus,
@@ -63,7 +64,7 @@ export class OrdersService {
       this.assertDestinationInCucuta(dto.destLat, dto.destLng);
     }
     Object.assign(order, {
-      ...dto,
+      ...definedProps(dto),
       windowStart: dto.windowStart
         ? new Date(dto.windowStart)
         : order.windowStart,

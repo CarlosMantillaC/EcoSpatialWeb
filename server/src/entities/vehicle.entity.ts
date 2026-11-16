@@ -12,6 +12,8 @@ import { Driver } from './driver.entity';
 export enum VehicleStatus {
   FREE = 'libre',
   ON_ROUTE = 'en_ruta',
+  /** Fuera de servicio: su conductor no esta disponible. */
+  UNAVAILABLE = 'no_disponible',
 }
 
 @Entity('vehicles')
@@ -23,7 +25,7 @@ export class Vehicle {
   plate: string;
 
   @Column({ name: 'driver_name', type: 'text', nullable: true })
-  driverName?: string;
+  driverName?: string | null;
 
   /** Conductor asignado (el nombre se denormaliza en `driverName`). */
   @Column({ name: 'driver_id', type: 'uuid', nullable: true })

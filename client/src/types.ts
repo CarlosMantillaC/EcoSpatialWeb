@@ -1,4 +1,4 @@
-export type VehicleStatus = 'libre' | 'en_ruta';
+export type VehicleStatus = 'libre' | 'en_ruta' | 'no_disponible';
 
 export interface Vehicle {
   id: string;

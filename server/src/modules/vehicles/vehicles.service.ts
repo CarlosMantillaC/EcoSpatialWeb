@@ -1,8 +1,14 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Vehicle, VehicleStatus } from '../../entities/vehicle.entity';
+import { Driver, DriverStatus } from '../../entities/driver.entity';
 import { Coords, haversineKm } from '../../common/geo';
+import { definedProps } from '../../common/objects';
 import { DriversService } from '../drivers/drivers.service';
 import { CreateVehicleDto } from './dto/create-vehicle.dto';
 import { UpdateVehicleDto } from './dto/update-vehicle.dto';
@@ -31,27 +37,102 @@ export class VehiclesService {
   }
 
   async create(dto: CreateVehicleDto): Promise<Vehicle> {
-    const data = await this.withDriverName(dto);
-    const vehicle = this.vehiclesRepository.create(data);
+    const driver = dto.driverId
+      ? await this.assignableDriver(dto.driverId)
+      : null;
+    const vehicle = this.vehiclesRepository.create({
+      ...dto,
+      driverName: driver?.name ?? dto.driverName,
+      status:
+        dto.status ??
+        (driver?.status === DriverStatus.OFF
+          ? VehicleStatus.UNAVAILABLE
+          : VehicleStatus.FREE),
+    });
     return this.vehiclesRepository.save(vehicle);
   }
 
   async update(id: string, dto: UpdateVehicleDto): Promise<Vehicle> {
     const vehicle = await this.findOne(id);
-    Object.assign(vehicle, await this.withDriverName(dto));
+    const patch: Partial<Vehicle> = { ...definedProps(dto) };
+
+    if (dto.driverId !== undefined && dto.driverId !== null) {
+      // Se asigna conductor: el nombre se denormaliza y la disponibilidad
+      // del vehiculo sigue la del conductor.
+      const driver = await this.assignableDriver(dto.driverId, vehicle.id);
+      if (vehicle.driverId && vehicle.driverId !== dto.driverId) {
+        throw new ConflictException(
+          `El vehiculo ${vehicle.plate} ya tiene asignado a ${
+            vehicle.driverName ?? 'otro conductor'
+          }; desasignalo primero`,
+        );
+      }
+      patch.driverName = driver.name;
+      if (dto.status === undefined) {
+        patch.status = this.statusForDriver(driver, vehicle.status);
+      }
+    } else if (dto.driverId === null) {
+      // Se desasigna el conductor: se limpia el nombre denormalizado y,
+      // si el vehiculo estaba fuera de servicio por el, vuelve a estarlo.
+      patch.driverName = null;
+      if (
+        dto.status === undefined &&
+        vehicle.status === VehicleStatus.UNAVAILABLE
+      ) {
+        patch.status = VehicleStatus.FREE;
+      }
+    }
+
+    Object.assign(vehicle, patch);
     return this.vehiclesRepository.save(vehicle);
   }
 
   /**
-   * Si se asigna un conductor, su nombre se denormaliza en `driverName`
-   * para que el frontend lo muestre sin joins.
+   * Restriccion 1:1 — una persona conduce un solo vehiculo a la vez.
+   * El conductor no puede estar ya asignado a otro vehiculo.
    */
-  private async withDriverName<
-    T extends { driverId?: string | null; driverName?: string },
-  >(dto: T): Promise<T> {
-    if (!dto.driverId) return dto;
-    const driver = await this.driversService.findOne(dto.driverId);
-    return { ...dto, driverName: driver.name };
+  private async assignableDriver(
+    driverId: string,
+    vehicleId?: string,
+  ): Promise<Driver> {
+    const driver = await this.driversService.findOne(driverId);
+    const vehicles = await this.vehiclesRepository.find({ where: { driverId } });
+    const other = vehicles.find((vehicle) => vehicle.id !== vehicleId);
+    if (other) {
+      throw new ConflictException(
+        `El conductor ${driver.name} ya esta asignado al vehiculo ${other.plate}; desasignalo primero`,
+      );
+    }
+    return driver;
+  }
+
+  /**
+   * Libera el vehiculo tras un viaje: queda `libre` si su conductor esta
+   * disponible y `no_disponible` si el conductor esta fuera.
+   */
+  async release(id: string): Promise<Vehicle> {
+    const vehicle = await this.findOne(id);
+    const driver = vehicle.driverId
+      ? await this.driversService.findOne(vehicle.driverId)
+      : null;
+    return this.update(id, {
+      status:
+        driver?.status === DriverStatus.OFF
+          ? VehicleStatus.UNAVAILABLE
+          : VehicleStatus.FREE,
+    });
+  }
+
+  /** Estado del vehiculo segun la disponibilidad del conductor. */
+  private statusForDriver(driver: Driver, current: VehicleStatus): VehicleStatus {
+    if (driver.status === DriverStatus.OFF) {
+      return current === VehicleStatus.ON_ROUTE
+        ? VehicleStatus.ON_ROUTE
+        : VehicleStatus.UNAVAILABLE;
+    }
+    return current === VehicleStatus.UNAVAILABLE
+      ? VehicleStatus.FREE
+      : current;
   }
 
   async remove(id: string): Promise<void> {

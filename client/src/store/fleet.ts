@@ -19,6 +19,7 @@ export interface FleetStats {
   total: number;
   libre: number;
   en_ruta: number;
+  no_disponible: number;
 }
 
 interface FleetState {
@@ -77,6 +78,9 @@ function computeStats(vehicles: Vehicle[]): FleetStats {
     total: vehicles.length,
     libre: vehicles.filter((vehicle) => vehicle.status === 'libre').length,
     en_ruta: vehicles.filter((vehicle) => vehicle.status === 'en_ruta').length,
+    no_disponible: vehicles.filter(
+      (vehicle) => vehicle.status === 'no_disponible',
+    ).length,
   };
 }
 
@@ -109,7 +113,7 @@ function apiMessage(error: any, fallback: string): string {
 export const useFleetStore = create<FleetState>((set, get) => ({
   allVehicles: [],
   vehicles: [],
-  stats: { total: 0, libre: 0, en_ruta: 0 },
+  stats: { total: 0, libre: 0, en_ruta: 0, no_disponible: 0 },
   filter: 'all',
   activeDispatches: [],
   selectedVehicleId: null,

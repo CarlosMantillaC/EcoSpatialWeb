@@ -7,6 +7,7 @@ const FILTERS: { id: FleetFilter; label: string }[] = [
   { id: 'all', label: 'Todos' },
   { id: 'libre', label: 'Disponibles' },
   { id: 'en_ruta', label: 'En ruta' },
+  { id: 'no_disponible', label: 'No disp.' },
 ];
 
 function formatRemaining(seconds: number): string {
@@ -16,16 +17,24 @@ function formatRemaining(seconds: number): string {
 }
 
 function StatusPill({ status }: { status: Vehicle['status'] }) {
-  const libre = status === 'libre';
+  const styles: Record<Vehicle['status'], string> = {
+    libre:
+      'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400',
+    en_ruta:
+      'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400',
+    no_disponible:
+      'bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-400',
+  };
+  const labels: Record<Vehicle['status'], string> = {
+    libre: 'Disponible',
+    en_ruta: 'En ruta',
+    no_disponible: 'No disponible',
+  };
   return (
     <span
-      className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
-        libre
-          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400'
-          : 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400'
-      }`}
+      className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${styles[status]}`}
     >
-      {libre ? 'Disponible' : 'En ruta'}
+      {labels[status]}
     </span>
   );
 }
@@ -165,29 +174,37 @@ export function FleetPanel() {
         </button>
       </div>
 
-      <div className="mb-3 grid grid-cols-3 gap-2">
+      <div className="mb-3 grid grid-cols-4 gap-1.5">
         <div className="rounded-xl bg-slate-100 p-2 text-center dark:bg-slate-800">
-          <p className="text-lg font-bold text-slate-900 dark:text-white">
+          <p className="text-base font-bold text-slate-900 dark:text-white">
             {stats.total}
           </p>
-          <p className="text-[11px] uppercase text-slate-500 dark:text-slate-400">
+          <p className="text-[10px] uppercase text-slate-500 dark:text-slate-400">
             Total
           </p>
         </div>
         <div className="rounded-xl bg-emerald-50 p-2 text-center dark:bg-emerald-950/40">
-          <p className="text-lg font-bold text-emerald-700 dark:text-emerald-400">
+          <p className="text-base font-bold text-emerald-700 dark:text-emerald-400">
             {stats.libre}
           </p>
-          <p className="text-[11px] uppercase text-emerald-700/80 dark:text-emerald-400/80">
+          <p className="text-[10px] uppercase text-emerald-700/80 dark:text-emerald-400/80">
             Libres
           </p>
         </div>
         <div className="rounded-xl bg-amber-50 p-2 text-center dark:bg-amber-950/40">
-          <p className="text-lg font-bold text-amber-700 dark:text-amber-400">
+          <p className="text-base font-bold text-amber-700 dark:text-amber-400">
             {stats.en_ruta}
           </p>
-          <p className="text-[11px] uppercase text-amber-700/80 dark:text-amber-400/80">
+          <p className="text-[10px] uppercase text-amber-700/80 dark:text-amber-400/80">
             En ruta
+          </p>
+        </div>
+        <div className="rounded-xl bg-slate-100 p-2 text-center dark:bg-slate-800">
+          <p className="text-base font-bold text-slate-600 dark:text-slate-300">
+            {stats.no_disponible}
+          </p>
+          <p className="text-[10px] uppercase text-slate-500 dark:text-slate-400">
+            No disp.
           </p>
         </div>
       </div>

@@ -20,16 +20,19 @@ function buildIcon(color: string, ring: string, selected = false) {
 const ICONS: Record<VehicleStatus, L.DivIcon> = {
   libre: buildIcon('#10b981', '#ffffff'),
   en_ruta: buildIcon('#f59e0b', '#ffffff'),
+  no_disponible: buildIcon('#64748b', '#ffffff'),
 };
 
 const SELECTED_ICONS: Record<VehicleStatus, L.DivIcon> = {
   libre: buildIcon('#10b981', '#2563eb', true),
   en_ruta: buildIcon('#f59e0b', '#2563eb', true),
+  no_disponible: buildIcon('#64748b', '#2563eb', true),
 };
 
 const STATUS_LABEL: Record<VehicleStatus, string> = {
   libre: 'Disponible',
   en_ruta: 'En ruta',
+  no_disponible: 'No disponible',
 };
 
 function formatRemaining(seconds: number): string {
