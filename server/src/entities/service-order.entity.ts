@@ -5,6 +5,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import { CargoType } from '../common/cargo-type';
 
 export enum ServiceOrderStatus {
   PENDING = 'pendiente',
@@ -38,6 +39,21 @@ export class ServiceOrder {
 
   @Column({ name: 'dest_label', type: 'text', nullable: true })
   destLabel?: string | null;
+
+  /** Punto de recogida donde el vehiculo carga el envio. */
+  @Column({ name: 'pickup_point_id', type: 'uuid', nullable: true })
+  pickupPointId?: string | null;
+
+  /** Tipo de carga que exige el envio (filtra el vehiculo asignable). */
+  @Column({ name: 'cargo_type', type: 'enum', enum: CargoType, nullable: true })
+  cargoType?: CargoType | null;
+
+  /** Producto/contenido a recoger y entregar (ej. "Insulina NPH 100UI"). */
+  @Column({ name: 'product_label', type: 'text', nullable: true })
+  productLabel?: string | null;
+
+  @Column({ type: 'int', nullable: true })
+  quantity?: number | null;
 
   @Column({
     type: 'enum',

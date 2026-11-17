@@ -25,9 +25,16 @@ export interface AppConfig {
     enabled: boolean;
     intervalSeconds: number;
     tripSeconds: number;
+    /** Pausa simulada de carga en el punto de recogida (segundos). */
+    loadPauseSec: number;
     vehicleCount: number;
     centerLat: number;
     centerLng: number;
+  };
+  admin: {
+    /** Correo del usuario administrador semilla. */
+    seedEmail: string;
+    seedName: string;
   };
   osrm: {
     baseUrl: string;
@@ -71,9 +78,14 @@ export default (): AppConfig => ({
     enabled: (process.env.SIMULATOR_ENABLED ?? 'true') === 'true',
     intervalSeconds: parseInt(process.env.SIMULATOR_INTERVAL_SECONDS ?? '3', 10),
     tripSeconds: parseInt(process.env.SIMULATOR_TRIP_SECONDS ?? '50', 10),
+    loadPauseSec: parseInt(process.env.SIMULATOR_LOAD_PAUSE_SECONDS ?? '8', 10),
     vehicleCount: parseInt(process.env.SIMULATOR_VEHICLE_COUNT ?? '12', 10),
     centerLat: parseFloat(process.env.SIMULATOR_CENTER_LAT ?? '7.889'),
     centerLng: parseFloat(process.env.SIMULATOR_CENTER_LNG ?? '-72.4967'),
+  },
+  admin: {
+    seedEmail: process.env.ADMIN_SEED_EMAIL ?? 'admin@ecospatial.local',
+    seedName: process.env.ADMIN_SEED_NAME ?? 'Administrador',
   },
   osrm: {
     baseUrl: process.env.OSRM_BASE_URL ?? 'https://router.project-osrm.org',

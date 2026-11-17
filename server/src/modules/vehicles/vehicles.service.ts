@@ -9,6 +9,7 @@ import { Vehicle, VehicleStatus } from '../../entities/vehicle.entity';
 import { Driver, DriverStatus } from '../../entities/driver.entity';
 import { Coords, haversineKm } from '../../common/geo';
 import { definedProps } from '../../common/objects';
+import { CargoType } from '../../common/cargo-type';
 import { DriversService } from '../drivers/drivers.service';
 import { CreateVehicleDto } from './dto/create-vehicle.dto';
 import { UpdateVehicleDto } from './dto/update-vehicle.dto';
@@ -152,9 +153,17 @@ export class VehiclesService {
     await this.vehiclesRepository.remove(vehicle);
   }
 
-  async findNearestFree(target: Coords): Promise<Vehicle | null> {
+  /**
+   * Vehiculo libre mas cercano a `target` cuyo tipo de capacidad coincida
+   * EXACTAMENTE con el tipo de carga pedido: un envio refrigerado jamas
+   * se asigna a un vehiculo general (y viceversa).
+   */
+  async findNearestFreeForCargo(
+    target: Coords,
+    cargoType: CargoType,
+  ): Promise<Vehicle | null> {
     const free = await this.vehiclesRepository.find({
-      where: { status: VehicleStatus.FREE },
+      where: { status: VehicleStatus.FREE, cargoType },
     });
     if (free.length === 0) return null;
     return free.reduce((nearest, current) =>

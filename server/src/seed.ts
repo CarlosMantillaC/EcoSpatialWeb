@@ -5,6 +5,7 @@ import { DriversService } from './modules/drivers/drivers.service';
 import { RoutingService } from './modules/routing/routing.service';
 import { randomWaypointInside } from './modules/simulator/wander';
 import { isInsideCucuta } from './common/cucuta-boundary';
+import { CargoType, CARGO_TYPES } from './common/cargo-type';
 import { Driver } from './entities/driver.entity';
 import { VehicleStatus } from './entities/vehicle.entity';
 
@@ -23,7 +24,7 @@ const DRIVERS = [
   'Hector Salas',
 ];
 
-const CARGOS = ['general', 'refrigerado', 'fragil', 'express', 'paqueteria'];
+const CARGOS: CargoType[] = CARGO_TYPES;
 
 const CENTER_LAT = parseFloat(process.env.SIMULATOR_CENTER_LAT ?? '7.889');
 const CENTER_LNG = parseFloat(process.env.SIMULATOR_CENTER_LNG ?? '-72.4967');

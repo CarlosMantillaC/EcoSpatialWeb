@@ -6,6 +6,7 @@ import {
   IsString,
   IsUUID,
 } from 'class-validator';
+import { CargoType } from '../../../common/cargo-type';
 import { VehicleStatus } from '../../../entities/vehicle.entity';
 
 export class UpdateVehicleDto {
@@ -23,8 +24,8 @@ export class UpdateVehicleDto {
   driverId?: string | null;
 
   @IsOptional()
-  @IsString()
-  cargoType?: string;
+  @IsEnum(CargoType)
+  cargoType?: CargoType;
 
   @IsOptional()
   @IsEnum(VehicleStatus)

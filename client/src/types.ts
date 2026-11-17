@@ -4,12 +4,53 @@ export type VehicleStatus =
   | 'no_disponible'
   | 'sin_conductor';
 
+/** Roles de la plataforma (viene en el JWT). */
+export type UserRole = 'admin' | 'operator';
+
+/** Tipo de carga: capacidad del vehiculo y exigencia del envio. */
+export type CargoType =
+  | 'general'
+  | 'refrigerado'
+  | 'fragil'
+  | 'express'
+  | 'paqueteria';
+
+export const CARGO_TYPES: CargoType[] = [
+  'general',
+  'refrigerado',
+  'fragil',
+  'express',
+  'paqueteria',
+];
+
+export const CARGO_LABELS: Record<CargoType, string> = {
+  general: 'General',
+  refrigerado: 'Refrigerado',
+  fragil: 'Fragil',
+  express: 'Express',
+  paqueteria: 'Paqueteria',
+};
+
+/** Punto de recogida (sucursal): donde el vehiculo carga el envio. */
+export interface PickupPoint {
+  id: string;
+  name: string;
+  address?: string | null;
+  lat: number;
+  lng: number;
+  active: boolean;
+  createdAt: string;
+}
+
+/** Fases del viaje con recogida. */
+export type DispatchPhase = 'to_pickup' | 'loading' | 'to_delivery';
+
 export interface Vehicle {
   id: string;
   plate: string;
   driverName?: string | null;
   driverId?: string | null;
-  cargoType?: string | null;
+  cargoType: CargoType;
   status: VehicleStatus;
   lat: number;
   lng: number;
@@ -44,6 +85,10 @@ export interface ServiceOrder {
   destLat: number;
   destLng: number;
   destLabel?: string | null;
+  pickupPointId?: string | null;
+  cargoType?: CargoType | null;
+  productLabel?: string | null;
+  quantity?: number | null;
   priority: ServiceOrderPriority;
   windowStart?: string | null;
   windowEnd?: string | null;
@@ -124,34 +169,55 @@ export interface Dispatch {
   destLat: number;
   destLng: number;
   destLabel?: string | null;
+  pickupPointId?: string | null;
+  pickupLat?: number | null;
+  pickupLng?: number | null;
+  pickupLabel?: string | null;
+  cargoType?: CargoType | null;
+  productLabel?: string | null;
+  quantity?: number | null;
   vehicleId?: string | null;
   distanceKm?: number | null;
   durationMin?: number | null;
   status: 'pendiente' | 'asignado' | 'completado' | 'cancelado';
   routeGeometry?: RouteGeometry | null;
+  pickupRouteGeometry?: RouteGeometry | null;
   createdAt: string;
+}
+
+/** Tramo de la ruta: vehiculo -> recogida, o recogida -> entrega. */
+export interface DispatchLeg {
+  distanceKm: number;
+  durationMin: number;
+  geometry: RouteGeometry;
+}
+
+/** Punto de recogida resuelto (elegido o sugerido por el sistema). */
+export interface ResolvedPickup {
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
+  address?: string | null;
+  suggested: boolean;
 }
 
 export interface DispatchResponse {
   dispatch: Dispatch;
   vehicle: Vehicle;
-  route: {
-    distanceKm: number;
-    durationMin: number;
-    geometry: RouteGeometry;
-  };
+  pickup: ResolvedPickup;
+  cargoType: CargoType;
+  productLabel: string;
+  quantity: number | null;
+  /** Tramo 1 (a recoger) y tramo 2 (a entregar). */
+  legs: [DispatchLeg, DispatchLeg];
+  /** Totales del viaje con geometria concatenada. */
+  route: DispatchLeg;
+  loadPauseSec: number;
 }
 
 /** Resultado de POST /dispatch/preview: no toca estados ni guarda nada. */
-export interface DispatchPreview {
-  destination: LatLng;
-  vehicle: Vehicle;
-  route: {
-    distanceKm: number;
-    durationMin: number;
-    geometry: RouteGeometry;
-  };
-}
+export type DispatchPreview = Omit<DispatchResponse, 'dispatch'>;
 
 /** Despacho activo enriquecido con progreso (GET /dispatch/active). */
 export interface ActiveDispatch {
@@ -163,6 +229,9 @@ export interface ActiveDispatch {
   remainingSec: number;
   origin: LatLng;
   destination: LatLng;
+  pickup: { lat: number; lng: number; label: string | null } | null;
+  /** Fase actual: va a buscar, esta cargando, o va a entregar. */
+  phase: DispatchPhase;
 }
 
 /** Payload del evento SSE `fleet`. */
@@ -175,6 +244,16 @@ export interface AuthUser {
   id: string;
   email: string;
   name: string;
+  role: UserRole;
+}
+
+/** Usuario para la gestion de roles (solo admin). */
+export interface AdminUser {
+  id: string;
+  email: string;
+  name: string;
+  role: UserRole;
+  createdAt: string;
 }
 
 export interface AuthResponse {

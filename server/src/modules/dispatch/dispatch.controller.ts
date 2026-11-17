@@ -10,11 +10,19 @@ import {
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { RequestUser } from '../auth/request-user';
 import { AuditService } from '../audit/audit.service';
+import { Roles } from '../../common/roles.decorator';
+import { RolesGuard } from '../../common/roles.guard';
+import { UserRole } from '../../entities/user.entity';
 import { dispatchToJsonLd } from '../../semantic/jsonld';
 import { CreateDispatchDto } from './dto/create-dispatch.dto';
 import { DispatchService } from './dispatch.service';
 
-@UseGuards(JwtAuthGuard)
+/**
+ * Despachos: la operacion (crear, completar, cancelar) es exclusiva de
+ * las operadoras; el administrador solo gestiona maestros. Lectura para
+ * cualquier autenticado.
+ */
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('dispatch')
 export class DispatchController {
   constructor(
@@ -22,6 +30,7 @@ export class DispatchController {
     private readonly auditService: AuditService,
   ) {}
 
+  @Roles(UserRole.OPERATOR)
   @Post()
   async create(@Body() dto: CreateDispatchDto, @Req() req: { user: RequestUser }) {
     const result = await this.dispatchService.create(dto);
@@ -33,12 +42,17 @@ export class DispatchController {
       detail: {
         vehicleId: result.vehicle.id,
         plate: result.vehicle.plate,
+        pickup: result.pickup.name,
+        cargoType: result.cargoType,
+        productLabel: result.productLabel,
+        quantity: result.quantity,
         orderId: dto.orderId ?? null,
       },
     });
     return result;
   }
 
+  @Roles(UserRole.OPERATOR)
   @Post('preview')
   preview(@Body() dto: CreateDispatchDto) {
     return this.dispatchService.preview(dto);
@@ -65,6 +79,7 @@ export class DispatchController {
     return dispatchToJsonLd(await this.dispatchService.findOne(id));
   }
 
+  @Roles(UserRole.OPERATOR)
   @Post(':id/complete')
   async complete(
     @Param('id') id: string,
@@ -80,6 +95,7 @@ export class DispatchController {
     return dispatch;
   }
 
+  @Roles(UserRole.OPERATOR)
   @Post(':id/cancel')
   async cancel(@Param('id') id: string, @Req() req: { user: RequestUser }) {
     const dispatch = await this.dispatchService.cancel(id);

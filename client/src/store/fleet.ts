@@ -1,16 +1,19 @@
 import { create } from 'zustand';
 import type {
   ActiveDispatch,
+  CargoType,
+  DispatchLeg,
   DispatchPreview,
   DispatchResponse,
   FleetUpdate,
   LatLng,
+  ResolvedPickup,
   RouteGeometry,
   ServiceOrder,
   Vehicle,
   VehicleStatus,
 } from '../types';
-import { dispatchApi, vehiclesApi } from '../lib/api';
+import { dispatchApi, vehiclesApi, type DispatchPayload } from '../lib/api';
 import { useOpsStore } from './ops';
 
 export type FleetFilter = 'all' | VehicleStatus;
@@ -22,6 +25,22 @@ export interface FleetStats {
   no_disponible: number;
   sin_conductor: number;
 }
+
+/** Borrador del envio que la operadora completa antes de previsualizar. */
+export interface DispatchDraft {
+  cargoType: CargoType;
+  productLabel: string;
+  quantity: number | null;
+  /** null = dejar que el sistema sugiera el punto de recogida. */
+  pickupPointId: string | null;
+}
+
+const EMPTY_DRAFT: DispatchDraft = {
+  cargoType: 'general',
+  productLabel: '',
+  quantity: null,
+  pickupPointId: null,
+};
 
 interface FleetState {
   /** Flota completa (sin filtrar) tal y como la sirve el servidor. */
@@ -41,12 +60,17 @@ interface FleetState {
   /** Aviso no bloqante (ej. "servicio completado automaticamente"). */
   notice: string | null;
   lastDispatch: DispatchResponse | null;
-  /** Destino elegido aun sin aprobar. */
+  /** Vista previa del viaje pendiente de aprobacion. */
   preview: DispatchPreview | null;
   /** Orden de servicio que origina el despacho en curso (si aplica). */
   pendingOrder: ServiceOrder | null;
+  /** Borrador del envio (recogida, tipo de carga, producto). */
+  draft: DispatchDraft;
   route: RouteGeometry | null;
+  routeLegs: [DispatchLeg, DispatchLeg] | null;
+  pickup: ResolvedPickup | null;
   destination: LatLng | null;
+  destLabel: string | null;
   loadVehicles: (filter?: FleetFilter) => Promise<void>;
   refresh: () => Promise<void>;
   setFilter: (filter: FleetFilter) => void;
@@ -56,13 +80,19 @@ interface FleetState {
   applyFleetUpdate: (update: FleetUpdate) => void;
   setShowTraffic: (value: boolean) => void;
   clearMarkers: () => void;
-  /** Paso 1: elige destino y calcula vista previa (sin asignar nada). */
-  selectDestination: (lat: number, lng: number, label?: string) => Promise<void>;
-  /** Paso 1 desde una orden: preview del viaje con destino de la orden. */
+  /** Paso 1: elige destino en el mapa (abre el formulario del envio). */
+  selectDestination: (lat: number, lng: number, label?: string) => void;
+  /** Completa el borrador del envio (tipo, producto, recogida). */
+  setDraft: (draft: Partial<DispatchDraft>) => void;
+  /** Cambia el punto de recogida y recalcula la vista previa. */
+  changePickup: (pickupPointId: string | null) => Promise<void>;
+  /** Paso 2: calcula la vista previa (sin asignar nada). */
+  runPreview: () => Promise<void>;
+  /** Paso 2 desde una orden: preview con los datos del envio. */
   startOrderDispatch: (order: ServiceOrder) => Promise<void>;
   /** Descarta la vista previa sin tocar el despacho activo. */
   discardPreview: () => void;
-  /** Paso 2: aprueba y crea el despacho. */
+  /** Paso 3: aprueba y crea el despacho. */
   approveDispatch: () => Promise<void>;
   /** Oculta la ruta en el mapa pero conserva el despacho activo. */
   clearRoute: () => void;
@@ -127,8 +157,12 @@ export const useFleetStore = create<FleetState>((set, get) => ({
   lastDispatch: null,
   preview: null,
   pendingOrder: null,
+  draft: { ...EMPTY_DRAFT },
   route: null,
+  routeLegs: null,
+  pickup: null,
   destination: null,
+  destLabel: null,
 
   applyFleetUpdate: (update) => {
     const { filter, selectedVehicleId } = get();
@@ -197,7 +231,10 @@ export const useFleetStore = create<FleetState>((set, get) => ({
           preview: null,
           pendingOrder: null,
           route: null,
+          routeLegs: null,
+          pickup: null,
           destination: null,
+          destLabel: null,
           notice: 'Servicio completado automaticamente.',
         });
         void useOpsStore.getState().loadOrders();
@@ -228,7 +265,7 @@ export const useFleetStore = create<FleetState>((set, get) => ({
 
   clearMarkers: () => set({ markersVisible: false }),
 
-  selectDestination: async (lat, lng, label) => {
+  selectDestination: (lat, lng, label) => {
     const { lastDispatch, loading } = get();
     if (loading) return;
 
@@ -240,15 +277,61 @@ export const useFleetStore = create<FleetState>((set, get) => ({
       return;
     }
 
-    const destination = { lat, lng };
-    set({ loading: true, error: null, notice: null, destination, preview: null });
+    set({
+      destination: { lat, lng },
+      destLabel: label ?? null,
+      preview: null,
+      error: null,
+      notice: null,
+      draft: { ...EMPTY_DRAFT },
+    });
+  },
+
+  setDraft: (draft) => set({ draft: { ...get().draft, ...draft } }),
+
+  changePickup: async (pickupPointId) => {
+    set({ draft: { ...get().draft, pickupPointId } });
+    if (get().preview) {
+      await get().runPreview();
+    }
+  },
+
+  runPreview: async () => {
+    const { destination, draft, pendingOrder, loading } = get();
+    if (!destination || loading) return;
+    if (!draft.productLabel.trim()) {
+      set({ error: 'Describe el producto o contenido del envio.' });
+      return;
+    }
+
+    const payload: DispatchPayload = {
+      destLat: destination.lat,
+      destLng: destination.lng,
+      destLabel: get().destLabel ?? undefined,
+      pickupPointId: draft.pickupPointId ?? undefined,
+      cargoType: draft.cargoType,
+      productLabel: draft.productLabel.trim(),
+      quantity: draft.quantity ?? undefined,
+      orderId: pendingOrder?.id,
+    };
+
+    set({ loading: true, error: null, notice: null });
     try {
-      const result = await dispatchApi.preview(lat, lng, label);
-      set({ preview: { destination, ...result }, loading: false });
+      const result = await dispatchApi.preview(payload);
+      set({
+        preview: result,
+        // La sugerencia del sistema se materializa en el borrador: la
+        // operadora puede cambiarla y el viaje se recalcula.
+        draft: {
+          ...draft,
+          pickupPointId: result.pickup.id,
+        },
+        loading: false,
+      });
     } catch (error) {
       set({
         loading: false,
-        destination: null,
+        preview: null,
         error: apiMessage(error, 'No se pudo calcular la ruta. Intenta de nuevo.'),
       });
     }
@@ -258,43 +341,61 @@ export const useFleetStore = create<FleetState>((set, get) => ({
     set({
       preview: null,
       destination: null,
+      destLabel: null,
       pendingOrder: null,
+      draft: { ...EMPTY_DRAFT },
       notice: null,
       error: null,
     }),
 
   startOrderDispatch: async (order) => {
-    set({ pendingOrder: order });
-    await get().selectDestination(
-      order.destLat,
-      order.destLng,
-      order.destLabel ?? order.clientName,
-    );
-    // Si el preview fallo (destino fuera de Cucuta, sin vehiculos...),
-    // no queda una orden colgando en el panel.
-    if (!get().preview) set({ pendingOrder: null });
+    set({
+      pendingOrder: order,
+      destination: { lat: order.destLat, lng: order.destLng },
+      destLabel: order.destLabel ?? order.clientName,
+      preview: null,
+      error: null,
+      notice: null,
+      draft: {
+        cargoType: order.cargoType ?? 'general',
+        productLabel: order.productLabel ?? 'Envio',
+        quantity: order.quantity ?? null,
+        pickupPointId: order.pickupPointId ?? null,
+      },
+    });
+    await get().runPreview();
   },
 
   approveDispatch: async () => {
-    const { preview, pendingOrder, loading } = get();
-    if (!preview || loading) return;
+    const { preview, pendingOrder, destination, draft, loading } = get();
+    if (!preview || !destination || loading) return;
 
-    const { destination, vehicle } = preview;
     set({ loading: true, error: null, notice: null });
     try {
-      const result = await dispatchApi.create(
-        destination.lat,
-        destination.lng,
-        undefined,
-        vehicle.id,
-        pendingOrder?.id,
-      );
+      const result = await dispatchApi.create({
+        destLat: destination.lat,
+        destLng: destination.lng,
+        destLabel: get().destLabel ?? undefined,
+        pickupPointId: preview.pickup.id,
+        cargoType: draft.cargoType,
+        productLabel: draft.productLabel.trim(),
+        quantity: draft.quantity ?? undefined,
+        vehicleId: preview.vehicle.id,
+        orderId: pendingOrder?.id,
+      });
       set({
         lastDispatch: result,
         route: result.route.geometry,
-        destination,
+        routeLegs: result.legs,
+        pickup: result.pickup,
+        destination: {
+          lat: result.dispatch.destLat,
+          lng: result.dispatch.destLng,
+        },
+        destLabel: result.dispatch.destLabel ?? null,
         preview: null,
         pendingOrder: null,
+        draft: { ...EMPTY_DRAFT },
         loading: false,
       });
       void useOpsStore.getState().loadOrders();
@@ -307,13 +408,16 @@ export const useFleetStore = create<FleetState>((set, get) => ({
     }
   },
 
-  clearRoute: () => set({ route: null, destination: null }),
+  clearRoute: () =>
+    set({ route: null, routeLegs: null, pickup: null, destination: null }),
 
   showRoute: () => {
     const dispatch = get().lastDispatch;
     if (!dispatch) return;
     set({
       route: dispatch.route.geometry,
+      routeLegs: dispatch.legs,
+      pickup: dispatch.pickup,
       destination: {
         lat: dispatch.dispatch.destLat,
         lng: dispatch.dispatch.destLng,
@@ -332,7 +436,10 @@ export const useFleetStore = create<FleetState>((set, get) => ({
         preview: null,
         pendingOrder: null,
         route: null,
+        routeLegs: null,
+        pickup: null,
         destination: null,
+        destLabel: null,
         loading: false,
         notice: 'Servicio completado.',
       });
@@ -357,7 +464,10 @@ export const useFleetStore = create<FleetState>((set, get) => ({
         preview: null,
         pendingOrder: null,
         route: null,
+        routeLegs: null,
+        pickup: null,
         destination: null,
+        destLabel: null,
         loading: false,
         notice: 'Despacho cancelado y vehiculo liberado.',
       });
@@ -379,7 +489,10 @@ export const useFleetStore = create<FleetState>((set, get) => ({
         preview: null,
         pendingOrder: null,
         route: null,
+        routeLegs: null,
+        pickup: null,
         destination: null,
+        destLabel: null,
         notice: 'Servicio completado automaticamente.',
       });
     }

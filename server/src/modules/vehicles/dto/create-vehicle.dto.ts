@@ -7,6 +7,7 @@ import {
   IsString,
   IsUUID,
 } from 'class-validator';
+import { CargoType } from '../../../common/cargo-type';
 import { VehicleStatus } from '../../../entities/vehicle.entity';
 
 export class CreateVehicleDto {
@@ -23,9 +24,9 @@ export class CreateVehicleDto {
   @IsUUID()
   driverId?: string | null;
 
-  @IsOptional()
-  @IsString()
-  cargoType?: string;
+  /** Capacidad del vehiculo: un unico tipo de carga. */
+  @IsEnum(CargoType)
+  cargoType: CargoType;
 
   @IsOptional()
   @IsEnum(VehicleStatus)

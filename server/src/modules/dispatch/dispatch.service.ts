@@ -8,6 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import {
   Dispatch,
+  DispatchPhase,
   DispatchStatus,
 } from '../../entities/dispatch.entity';
 import {
@@ -15,7 +16,9 @@ import {
   ServiceOrderStatus,
 } from '../../entities/service-order.entity';
 import { Vehicle, VehicleStatus } from '../../entities/vehicle.entity';
-import { Coords, positionAlongRoute } from '../../common/geo';
+import { PickupPoint } from '../../entities/pickup-point.entity';
+import { CargoType, CARGO_LABELS } from '../../common/cargo-type';
+import { Coords, LineStringCoords, positionAlongRoute } from '../../common/geo';
 import {
   isInsideCucuta,
   isRouteInsideCucuta,
@@ -28,6 +31,40 @@ import { RoutingService } from '../routing/routing.service';
 import { VehiclesService } from '../vehicles/vehicles.service';
 import { CreateDispatchDto } from './dto/create-dispatch.dto';
 
+/** Punto de recogida resuelto (elegido o sugerido por el sistema). */
+export interface PickupRef {
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
+  address?: string | null;
+  /** true si el sistema lo sugirio (la operadora puede cambiarlo). */
+  suggested: boolean;
+}
+
+/** Tramo de la ruta: vehiculo -> recogida, o recogida -> entrega. */
+export interface DispatchLeg {
+  distanceKm: number;
+  durationMin: number;
+  geometry: {
+    type: 'LineString';
+    coordinates: [number, number][];
+  };
+}
+
+export interface PreviewResult {
+  vehicle: Vehicle;
+  pickup: PickupRef;
+  cargoType: CargoType;
+  productLabel: string;
+  quantity: number | null;
+  /** Tramo 1 (a recoger) y tramo 2 (a entregar). */
+  legs: [DispatchLeg, DispatchLeg];
+  /** Totales del viaje (ambos tramos) con geometria concatenada. */
+  route: DispatchLeg;
+  loadPauseSec: number;
+}
+
 /** Despacho activo enriquecido con progreso para el frontend. */
 export interface ActiveDispatchView {
   dispatch: Dispatch;
@@ -38,17 +75,33 @@ export interface ActiveDispatchView {
   remainingSec: number;
   origin: Coords;
   destination: Coords;
+  /** Punto de recogida del viaje (null en despachos heredados). */
+  pickup: { lat: number; lng: number; label: string | null } | null;
+  /** Fase actual: va a buscar, esta cargando, o va a entregar. */
+  phase: DispatchPhase;
+}
+
+/** Reparto del tiempo simulado entre fases del viaje. */
+interface TripTimeline {
+  hasPickup: boolean;
+  totalSec: number;
+  leg1Sec: number;
+  loadSec: number;
+  leg2Sec: number;
 }
 
 @Injectable()
 export class DispatchService {
   private readonly tripSeconds: number;
+  private readonly loadPauseSec: number;
 
   constructor(
     @InjectRepository(Dispatch)
     private readonly dispatchesRepository: Repository<Dispatch>,
     @InjectRepository(ServiceOrder)
     private readonly ordersRepository: Repository<ServiceOrder>,
+    @InjectRepository(PickupPoint)
+    private readonly pickupPointsRepository: Repository<PickupPoint>,
     private readonly vehiclesService: VehiclesService,
     private readonly driversService: DriversService,
     private readonly alertsService: AlertsService,
@@ -56,6 +109,7 @@ export class DispatchService {
     config: ConfigService,
   ) {
     this.tripSeconds = config.get<number>('simulator.tripSeconds') ?? 50;
+    this.loadPauseSec = config.get<number>('simulator.loadPauseSec') ?? 8;
   }
 
   /**
@@ -63,27 +117,98 @@ export class DispatchService {
    * no guarda estado, asi que sobrevive a reinicios del servidor.
    */
   progressOf(dispatch: Dispatch, now: Date = new Date()): number {
-    const elapsedSec = (now.getTime() - dispatch.createdAt.getTime()) / 1000;
-    return Math.min(1, Math.max(0, elapsedSec / this.tripSeconds));
+    const timeline = this.timelineOf(dispatch);
+    const elapsedSec = this.elapsedOf(dispatch, now);
+    return Math.min(1, Math.max(0, elapsedSec / timeline.totalSec));
+  }
+
+  private elapsedOf(dispatch: Dispatch, now: Date = new Date()): number {
+    return (now.getTime() - dispatch.createdAt.getTime()) / 1000;
   }
 
   /**
-   * Calcula el vehiculo candidato y la ruta sin guardar nada ni tocar
-   * estados: sirve para la vista previa antes de aprobar el viaje.
+   * Reparto del tiempo simulado: tramo a la recogida, pausa de carga y
+   * tramo a la entrega, proporcionales a las duraciones OSRM de cada
+   * tramo. Sin recogida (despachos heredados) es un unico tramo.
    */
-  async preview(dto: CreateDispatchDto) {
+  timelineOf(dispatch: Dispatch): TripTimeline {
+    const hasPickup =
+      dispatch.pickupLat != null && dispatch.pickupLng != null;
+    if (!hasPickup) {
+      return {
+        hasPickup: false,
+        totalSec: this.tripSeconds,
+        leg1Sec: 0,
+        loadSec: 0,
+        leg2Sec: this.tripSeconds,
+      };
+    }
+    const loadSec = Math.min(this.loadPauseSec, this.tripSeconds * 0.3);
+    const travelSec = Math.max(1, this.tripSeconds - loadSec);
+    const d1 = Math.max(dispatch.pickupDurationMin ?? 0, 0.01);
+    const d2 = Math.max(dispatch.durationMin ?? 0, 0.01);
+    const leg1Sec = (travelSec * d1) / (d1 + d2);
+    return {
+      hasPickup: true,
+      totalSec: this.tripSeconds,
+      leg1Sec,
+      loadSec,
+      leg2Sec: travelSec - leg1Sec,
+    };
+  }
+
+  /** Fase del viaje y avance dentro de su tramo actual. */
+  phaseOf(
+    dispatch: Dispatch,
+    elapsedSec: number,
+  ): { phase: DispatchPhase; legProgress: number } {
+    const timeline = this.timelineOf(dispatch);
+    if (!timeline.hasPickup) {
+      return {
+        phase: 'to_delivery',
+        legProgress: Math.min(1, Math.max(0, elapsedSec / timeline.leg2Sec)),
+      };
+    }
+    if (elapsedSec < timeline.leg1Sec) {
+      return {
+        phase: 'to_pickup',
+        legProgress: Math.min(1, elapsedSec / timeline.leg1Sec),
+      };
+    }
+    if (elapsedSec < timeline.leg1Sec + timeline.loadSec) {
+      return { phase: 'loading', legProgress: 0 };
+    }
+    const inLeg2 = elapsedSec - timeline.leg1Sec - timeline.loadSec;
+    return {
+      phase: 'to_delivery',
+      legProgress: Math.min(1, Math.max(0, inLeg2 / timeline.leg2Sec)),
+    };
+  }
+
+  /**
+   * Calcula vehiculo, punto de recogida y rutas sin guardar nada ni
+   * tocar estados: sirve para la vista previa antes de aprobar el viaje.
+   */
+  async preview(dto: CreateDispatchDto): Promise<PreviewResult> {
     const target = { lat: dto.destLat, lng: dto.destLng };
     this.assertDestinationInCucuta(target);
-    const vehicle = await this.vehiclesService.findNearestFree(target);
-    if (!vehicle) {
-      throw new BadRequestException(
-        'No hay vehiculos Disponibles para asignar; asigna conductores a los vehiculos Libres',
-      );
-    }
-
-    const origin = { lat: vehicle.lat, lng: vehicle.lng };
-    const route = await this.routeInsideCucuta(origin, target, vehicle);
-    return { vehicle, route };
+    const { vehicle, pickup, suggested } = await this.resolveAssignment(dto);
+    const { legs, route } = await this.planRoutes(
+      { lat: vehicle.lat, lng: vehicle.lng },
+      { lat: pickup.lat, lng: pickup.lng },
+      target,
+      vehicle,
+    );
+    return {
+      vehicle,
+      pickup: { ...pickup, suggested },
+      cargoType: dto.cargoType,
+      productLabel: dto.productLabel,
+      quantity: dto.quantity ?? null,
+      legs,
+      route,
+      loadPauseSec: this.loadPauseSec,
+    };
   }
 
   async create(dto: CreateDispatchDto) {
@@ -107,16 +232,11 @@ export class DispatchService {
     }
 
     // Prefiere el vehiculo de la vista previa si sigue libre; si otro
-    // usuario lo tomo primero, asigna el mas cercano disponible.
-    const vehicle =
-      (dto.vehicleId
-        ? await this.vehiclesService.findFreeById(dto.vehicleId)
-        : null) ?? (await this.vehiclesService.findNearestFree(target));
-    if (!vehicle) {
-      throw new BadRequestException(
-        'No hay vehiculos Disponibles para asignar; asigna conductores a los vehiculos Libres',
-      );
-    }
+    // usuario lo tomo primero, asigna el compatible mas cercano.
+    const { vehicle, pickup, suggested } = await this.resolveAssignment(
+      dto,
+      true,
+    );
 
     const alreadyActive = await this.dispatchesRepository.findOne({
       where: {
@@ -131,7 +251,12 @@ export class DispatchService {
     }
 
     const origin = { lat: vehicle.lat, lng: vehicle.lng };
-    const route = await this.routeInsideCucuta(origin, target, vehicle);
+    const { legs, route } = await this.planRoutes(
+      origin,
+      { lat: pickup.lat, lng: pickup.lng },
+      target,
+      vehicle,
+    );
 
     const dispatch = this.dispatchesRepository.create({
       originLat: origin.lat,
@@ -139,12 +264,22 @@ export class DispatchService {
       destLat: target.lat,
       destLng: target.lng,
       destLabel: dto.destLabel ?? order?.destLabel ?? null,
+      pickupPointId: pickup.id,
+      pickupLat: pickup.lat,
+      pickupLng: pickup.lng,
+      pickupLabel: pickup.name,
+      cargoType: dto.cargoType,
+      productLabel: dto.productLabel,
+      quantity: dto.quantity ?? null,
       vehicleId: vehicle.id,
       orderId: order?.id ?? null,
       distanceKm: route.distanceKm,
       durationMin: route.durationMin,
+      pickupRouteGeometry: legs[0].geometry,
+      pickupDistanceKm: legs[0].distanceKm,
+      pickupDurationMin: legs[0].durationMin,
       status: DispatchStatus.ASSIGNED,
-      routeGeometry: route.geometry,
+      routeGeometry: legs[1].geometry,
     });
     const saved = await this.dispatchesRepository.save(dispatch);
 
@@ -165,7 +300,13 @@ export class DispatchService {
     return {
       dispatch: saved,
       vehicle: await this.vehiclesService.findOne(vehicle.id),
+      pickup: { ...pickup, suggested },
+      cargoType: dto.cargoType,
+      productLabel: dto.productLabel,
+      quantity: dto.quantity ?? null,
+      legs,
       route,
+      loadPauseSec: this.loadPauseSec,
     };
   }
 
@@ -178,16 +319,193 @@ export class DispatchService {
     }
   }
 
+  private noVehiclesError(cargoType: CargoType) {
+    return new BadRequestException(
+      `No hay vehiculos tipo '${CARGO_LABELS[cargoType]}' disponibles para asignar; crea o libera vehiculos con esa capacidad`,
+    );
+  }
+
   /**
-   * Geofence de Cucuta sobre el viaje completo: el origen debe estar
-   * dentro del perimetro y la ruta OSRM no puede salirse de el (p. ej.
-   * calles que cruzan la frontera con Venezuela).
+   * Resuelve (vehiculo, punto de recogida):
+   * - Con `pickupPointId` explicito: el vehiculo compatible mas cercano
+   *   a esa sucursal (la eleccion de la operadora manda).
+   * - Sin explicito: la pareja (vehiculo libre compatible, sucursal) que
+   *   minimiza la distancia vehiculo -> recogida. La sugerencia es
+   *   editable por la operadora.
+   * Con `allowFallback`, un vehiculo explicito ya tomado se sustituye por
+   * el mas cercano en vez de fallar (al aprobar no se pierde el viaje).
    */
+  private async resolveAssignment(
+    dto: CreateDispatchDto,
+    allowFallback = false,
+  ): Promise<{ vehicle: Vehicle; pickup: PickupRef; suggested: boolean }> {
+    const points = await this.activePickupPoints();
+    if (points.length === 0) {
+      throw new BadRequestException(
+        'No hay puntos de recogida activos; el administrador debe crear sucursales',
+      );
+    }
+
+    // Con vehiculo explicito (vista previa): se respeta su eleccion.
+    if (dto.vehicleId) {
+      const vehicle = await this.vehiclesService.findFreeById(dto.vehicleId);
+      if (!vehicle) {
+        if (!allowFallback) {
+          throw new BadRequestException(
+            'El vehiculo elegido ya no esta disponible; calcula la vista previa de nuevo',
+          );
+        }
+        return this.resolveAssignment(
+          { ...dto, vehicleId: undefined },
+          allowFallback,
+        );
+      }
+      if (vehicle.cargoType !== dto.cargoType) {
+        throw new BadRequestException(
+          `El vehiculo ${vehicle.plate} transporta carga tipo '${vehicle.cargoType}' y no puede llevar un envio tipo '${dto.cargoType}'`,
+        );
+      }
+      const { pickup, suggested } = await this.resolvePickup(dto, vehicle);
+      return { vehicle, pickup, suggested };
+    }
+
+    const free = await this.vehiclesService.findAll(VehicleStatus.FREE);
+    const compatible = free.filter((v) => v.cargoType === dto.cargoType);
+    if (compatible.length === 0) {
+      throw this.noVehiclesError(dto.cargoType);
+    }
+
+    if (dto.pickupPointId) {
+      const pickup = points.find((point) => point.id === dto.pickupPointId);
+      if (!pickup) {
+        throw new BadRequestException(
+          'El punto de recogida elegido no existe o esta inactivo',
+        );
+      }
+      const target = { lat: pickup.lat, lng: pickup.lng };
+      const vehicle = compatible.reduce((nearest, current) =>
+        this.distanceTo(current, target) < this.distanceTo(nearest, target)
+          ? current
+          : nearest,
+      );
+      return {
+        vehicle,
+        pickup: this.toPickupRef(pickup, false),
+        suggested: false,
+      };
+    }
+
+    // Sugerencia: par (vehiculo, sucursal) con menor distancia a recorrer.
+    let best: { vehicle: Vehicle; point: PickupPoint; distance: number } | null =
+      null;
+    for (const point of points) {
+      const target = { lat: point.lat, lng: point.lng };
+      for (const vehicle of compatible) {
+        const distance = this.distanceTo(vehicle, target);
+        if (!best || distance < best.distance) {
+          best = { vehicle, point, distance };
+        }
+      }
+    }
+    if (!best) throw this.noVehiclesError(dto.cargoType);
+    return {
+      vehicle: best.vehicle,
+      pickup: this.toPickupRef(best.point, true),
+      suggested: true,
+    };
+  }
+
+  /**
+   * Punto de recogida explicito del DTO o el mas cercano al vehiculo
+   * (marcado como sugerido). Solo llega aqui con vehiculo ya elegido.
+   */
+  private async resolvePickup(
+    dto: CreateDispatchDto,
+    vehicle: Vehicle,
+  ): Promise<{ pickup: PickupRef; suggested: boolean }> {
+    const points = await this.activePickupPoints();
+    if (points.length === 0) {
+      throw new BadRequestException(
+        'No hay puntos de recogida activos; el administrador debe crear sucursales',
+      );
+    }
+    if (dto.pickupPointId) {
+      const pickup = points.find((point) => point.id === dto.pickupPointId);
+      if (!pickup) {
+        throw new BadRequestException(
+          'El punto de recogida elegido no existe o esta inactivo',
+        );
+      }
+      return { pickup: this.toPickupRef(pickup, false), suggested: false };
+    }
+    const target = { lat: vehicle.lat, lng: vehicle.lng };
+    const nearest = points.reduce((best, point) =>
+      this.distanceTo(point, target) < this.distanceTo(best, target)
+        ? point
+        : best,
+    );
+    return { pickup: this.toPickupRef(nearest, true), suggested: true };
+  }
+
+  private async activePickupPoints(): Promise<PickupPoint[]> {
+    return this.pickupPointsRepository.find({
+      where: { active: true },
+      order: { name: 'ASC' },
+    });
+  }
+
+  private toPickupRef(point: PickupPoint, suggested: boolean): PickupRef {
+    return {
+      id: point.id,
+      name: point.name,
+      lat: point.lat,
+      lng: point.lng,
+      address: point.address ?? null,
+      suggested,
+    };
+  }
+
+  private distanceTo(a: Coords, b: Coords): number {
+    const dLat = a.lat - b.lat;
+    const dLng = a.lng - b.lng;
+    return dLat * dLat + dLng * dLng;
+  }
+
+  /**
+   * Geofence de Cucuta sobre el viaje completo: cada tramo se calcula
+   * con OSRM y ninguna ruta puede salirse del perimetro (p. ej. calles
+   * que cruzan la frontera con Venezuela).
+   */
+  private async planRoutes(
+    origin: Coords,
+    pickup: Coords,
+    target: Coords,
+    vehicle: Vehicle,
+  ): Promise<{ legs: [DispatchLeg, DispatchLeg]; route: DispatchLeg }> {
+    const leg1 = await this.routeInsideCucuta(origin, pickup, vehicle);
+    const leg2 = await this.routeInsideCucuta(pickup, target, vehicle);
+    const legs: [DispatchLeg, DispatchLeg] = [leg1, leg2];
+    const route: DispatchLeg = {
+      distanceKm:
+        Math.round((leg1.distanceKm + leg2.distanceKm) * 100) / 100,
+      durationMin:
+        Math.round((leg1.durationMin + leg2.durationMin) * 10) / 10,
+      geometry: {
+        type: 'LineString',
+        coordinates: [
+          ...leg1.geometry.coordinates,
+          ...leg2.geometry.coordinates,
+        ],
+      },
+    };
+    return { legs, route };
+  }
+
   private async routeInsideCucuta(
     origin: Coords,
     target: Coords,
     vehicle: Vehicle,
-  ) {
+  ): Promise<DispatchLeg> {
     if (!isInsideCucuta(origin)) {
       throw new BadRequestException(
         `El vehiculo ${vehicle.plate} esta fuera de Cucuta y no puede iniciar el viaje`,
@@ -220,14 +538,27 @@ export class DispatchService {
         const vehicle = await this.vehiclesService.findOne(
           dispatch.vehicleId,
         );
-        const progress = this.progressOf(dispatch);
+        const elapsedSec = this.elapsedOf(dispatch);
+        const timeline = this.timelineOf(dispatch);
+        const { phase } = this.phaseOf(dispatch, elapsedSec);
         views.push({
           dispatch,
           vehicle,
-          progress,
-          remainingSec: Math.ceil((1 - progress) * this.tripSeconds),
+          progress: Math.min(1, Math.max(0, elapsedSec / timeline.totalSec)),
+          remainingSec: Math.ceil(
+            Math.max(0, timeline.totalSec - elapsedSec),
+          ),
           origin: { lat: dispatch.originLat, lng: dispatch.originLng },
           destination: { lat: dispatch.destLat, lng: dispatch.destLng },
+          pickup:
+            dispatch.pickupLat != null && dispatch.pickupLng != null
+              ? {
+                  lat: dispatch.pickupLat,
+                  lng: dispatch.pickupLng,
+                  label: dispatch.pickupLabel ?? null,
+                }
+              : null,
+          phase,
         });
       } catch {
         // Vehiculo borrado entre medias: se ignora ese despacho.
@@ -236,12 +567,47 @@ export class DispatchService {
     return views;
   }
 
-  /** Posicion simulada del vehiculo de un despacho activo. */
-  positionOf(dispatch: Dispatch, progress: number): Coords {
-    return positionAlongRoute(dispatch.routeGeometry, progress, {
+  /**
+   * Posicion simulada del vehiculo de un despacho activo: avanza hacia
+   * la recogida, espera durante la carga y luego avanza hacia la entrega.
+   */
+  positionOf(dispatch: Dispatch, elapsedSec: number): Coords {
+    const { phase, legProgress } = this.phaseOf(dispatch, elapsedSec);
+    const fallback = {
       from: { lat: dispatch.originLat, lng: dispatch.originLng },
       to: { lat: dispatch.destLat, lng: dispatch.destLng },
-    });
+    };
+
+    if (phase === 'loading') {
+      return {
+        lat: dispatch.pickupLat ?? fallback.to.lat,
+        lng: dispatch.pickupLng ?? fallback.to.lng,
+      };
+    }
+    if (phase === 'to_pickup') {
+      return positionAlongRoute(
+        dispatch.pickupRouteGeometry as LineStringCoords | null,
+        legProgress,
+        {
+          from: fallback.from,
+          to: {
+            lat: dispatch.pickupLat ?? fallback.to.lat,
+            lng: dispatch.pickupLng ?? fallback.to.lng,
+          },
+        },
+      );
+    }
+    return positionAlongRoute(
+      dispatch.routeGeometry as LineStringCoords | null,
+      legProgress,
+      {
+        from: {
+          lat: dispatch.pickupLat ?? fallback.from.lat,
+          lng: dispatch.pickupLng ?? fallback.from.lng,
+        },
+        to: fallback.to,
+      },
+    );
   }
 
   async findOne(id: string): Promise<Dispatch> {
@@ -280,12 +646,15 @@ export class DispatchService {
     }
     await this.releaseDriver(vehicle);
 
+    const product = dispatch.productLabel
+      ? ` (${dispatch.productLabel})`
+      : '';
     await this.alertsService.create({
       type: AlertType.ARRIVAL,
       severity: AlertSeverity.INFO,
-      message: `Servicio completado: ${vehicle?.plate ?? 'vehiculo'} llego a ${
-        dispatch.destLabel ?? 'su destino'
-      }`,
+      message: `Servicio completado: ${vehicle?.plate ?? 'vehiculo'} entrego${
+        product ? '' : ''
+      }${product} en ${dispatch.destLabel ?? 'su destino'}`,
       vehicleId: dispatch.vehicleId ?? null,
       dispatchId: dispatch.id,
     });

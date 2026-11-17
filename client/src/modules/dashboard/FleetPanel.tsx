@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useFleetStore, type FleetFilter } from '../../store/fleet';
 import { useMapStore } from '../../store/map';
+import { useAuthStore } from '../../store/auth';
 import type { ActiveDispatch, Vehicle } from '../../types';
 import { NewVehicleForm } from './NewVehicleForm';
 
@@ -158,7 +159,11 @@ export function FleetPanel() {
   const activeDispatches = useFleetStore((state) => state.activeDispatches);
   const setFilter = useFleetStore((state) => state.setFilter);
   const refresh = useFleetStore((state) => state.refresh);
+  const role = useAuthStore((state) => state.user?.role);
   const [showCreateForm, setShowCreateForm] = useState(false);
+
+  // Alta de vehiculos: solo el administrador (gestion de maestros).
+  const isAdmin = role === 'admin';
 
   const dispatchByVehicle = new Map(
     activeDispatches.map((view) => [view.vehicle.id, view]),
@@ -171,13 +176,15 @@ export function FleetPanel() {
           Flota
         </h2>
         <div className="flex gap-1.5">
-          <button
-            type="button"
-            onClick={() => setShowCreateForm(!showCreateForm)}
-            className="rounded-lg bg-emerald-600 px-2 py-1 text-xs font-semibold text-white hover:bg-emerald-700"
-          >
-            {showCreateForm ? 'Cerrar' : 'Nuevo vehiculo'}
-          </button>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => setShowCreateForm(!showCreateForm)}
+              className="rounded-lg bg-emerald-600 px-2 py-1 text-xs font-semibold text-white hover:bg-emerald-700"
+            >
+              {showCreateForm ? 'Cerrar' : 'Nuevo vehiculo'}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => void refresh()}
@@ -189,7 +196,7 @@ export function FleetPanel() {
         </div>
       </div>
 
-      {showCreateForm && (
+      {isAdmin && showCreateForm && (
         <div className="mb-3">
           <NewVehicleForm
             onCreated={() => setShowCreateForm(false)}

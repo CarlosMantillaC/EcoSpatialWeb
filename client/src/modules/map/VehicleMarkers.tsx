@@ -46,10 +46,22 @@ function formatRemaining(seconds: number): string {
 
 function DispatchDetails({ view }: { view: ActiveDispatch }) {
   const percent = Math.round(view.progress * 100);
+  const phaseLabel =
+    view.phase === 'to_pickup'
+      ? `Yendo a recoger${view.pickup?.label ? `: ${view.pickup.label}` : ''}`
+      : view.phase === 'loading'
+        ? `Cargando en ${view.pickup?.label ?? 'la sucursal'}`
+        : 'En reparto hacia el destino';
   return (
     <div className="mt-1 space-y-1 border-t border-slate-200 pt-1">
+      <p className="font-medium">{phaseLabel}</p>
       <p>
-        Destino: {view.destination.lat.toFixed(5)},{' '}
+        {view.dispatch.productLabel ?? 'Envio'}
+        {view.dispatch.quantity ? ` × ${view.dispatch.quantity}` : ''}
+        {view.dispatch.cargoType ? ` (${view.dispatch.cargoType})` : ''}
+      </p>
+      <p>
+        Entrega: {view.destination.lat.toFixed(5)},{' '}
         {view.destination.lng.toFixed(5)}
       </p>
       <p>Llegada simulada en {formatRemaining(view.remainingSec)}</p>

@@ -6,11 +6,13 @@ import configuration from './config/configuration';
 import { AlertsModule } from './modules/alerts/alerts.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { BootstrapModule } from './modules/bootstrap/bootstrap.module';
 import { DispatchModule } from './modules/dispatch/dispatch.module';
 import { DriversModule } from './modules/drivers/drivers.module';
 import { EventsModule } from './modules/events/events.module';
 import { GeocodingModule } from './modules/geocoding/geocoding.module';
 import { OrdersModule } from './modules/orders/orders.module';
+import { PickupPointsModule } from './modules/pickup-points/pickup-points.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { RoutingModule } from './modules/routing/routing.module';
 import { SimulatorModule } from './modules/simulator/simulator.module';
@@ -48,6 +50,8 @@ import { VehiclesModule } from './modules/vehicles/vehicles.module';
     ScheduleModule.forRoot(),
     AuthModule,
     UsersModule,
+    BootstrapModule,
+    PickupPointsModule,
     DriversModule,
     VehiclesModule,
     RoutingModule,

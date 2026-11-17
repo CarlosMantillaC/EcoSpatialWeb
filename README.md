@@ -1,6 +1,15 @@
 # EcoSpatial Web
 
-Plataforma logística de enrutamiento sostenible con **control HCI por voz** y **autenticación biométrica (Passwordless)**. Reemplaza el flujo CRUD tradicional por un motor interactivo sobre un mapa, con asignación automática del vehículo más cercano.
+Plataforma logística de enrutamiento sostenible con **control HCI por voz** y **autenticación biométrica (Passwordless)**. Reemplaza el flujo CRUD tradicional por un motor interactivo sobre un mapa, con asignación automática del vehículo compatible más cercano a la recogida.
+
+**Modelo del envío**: cada envío se define como **punto de recogida (sucursal) + producto/contenido + tipo de carga + destino**. El sistema sugiere la sucursal más conveniente (editable por la operadora), asigna solo vehículos cuyo tipo de carga coincida exactamente con el pedido y traza una ruta de **dos tramos** (vehículo → recogida → entrega). Un viaje recorre las fases **yendo a recoger → cargando → en reparto** y se completa solo al llegar.
+
+**Roles**:
+
+- **Administrador**: gestiona maestros — puntos de recogida (sucursales), vehículos (con su tipo de carga), conductores y su vínculo, y usuarios/roles. No opera despachos.
+- **Operadora**: crea órdenes y despachos sobre el mapa (recogida + producto + tipo de carga + destino). No toca los maestros.
+
+El registro público (biometría) crea operadores; los administradores se crean desde la consola de administración y existe un **admin semilla** al arrancar (ver más abajo).
 
 ## Stack
 
@@ -118,20 +127,23 @@ El micrófono se procesa localmente con la Web Speech API (`es-ES`). El dicciona
 
 ## Despacho
 
-El flujo es de **dos pasos**, para que ningún vehículo quede `en ruta` sin un viaje aprobado:
+El flujo es de **tres pasos**, para que ningún vehículo quede `en ruta` sin un viaje aprobado:
 
-1. Haz clic en cualquier punto del mapa → se calcula una **vista previa** (`POST /api/dispatch/preview`): vehículo libre más cercano, distancia, ETA y trazado de ruta. **No se guarda nada ni cambia el estado de ningún vehículo.**
-2. Revisa la propuesta en el panel y pulsa **Aprobar viaje** (o **Descartar**).
-3. El backend revalida que el vehículo siga libre, consulta OSRM, guarda el despacho y marca el vehículo `en_ruta`.
-4. Desde el panel puedes **completar** el servicio (libera el vehículo) o **cancelar** el despacho (también lo libera).
+1. Haz clic en cualquier punto del mapa (o lanza la orden con **Despachar**) → se abre el **formulario del envío**: producto/contenido (obligatorio), cantidad, tipo de carga y punto de recogida (**sugerido automáticamente**, editable).
+2. **Calcular viaje** llama a `POST /api/dispatch/preview`: vehículo libre **del tipo de carga pedido** más cercano a la recogida, ruta de **dos tramos** (vehículo → sucursal → entrega), distancias y ETAs por tramo y total. **No se guarda nada ni cambia el estado de ningún vehículo.**
+3. Revisa la propuesta en el panel y pulsa **Aprobar viaje** (o **Descartar**). El backend revalida, consulta OSRM, guarda el despacho (con snapshot del punto de recogida, producto y tipo) y marca el vehículo `en_ruta`.
+
+Si no hay vehículos del tipo de carga solicitado libres, el sistema lo dice explícitamente ("No hay vehículos tipo 'Refrigerado' disponibles..."). Un envío de un tipo **jamás** se asigna a un vehículo de otro tipo.
+
+Desde el panel puedes **completar** el servicio (libera el vehículo) o **cancelar** el despacho (también lo libera; la orden vuelve a la cola).
 
 Mientras haya un despacho activo, nuevos clics en el mapa se bloquean con un aviso: primero completa o cancela el servicio actual.
 
-**Durante el viaje** el vehículo se desplaza sobre la ruta en tiempo real y puedes seguirlo en:
+**Durante el viaje** el vehículo recorre las tres fases —**Yendo a recoger → Cargando en sucursal → En reparto**— sobre la ruta en tiempo real y puedes seguirlo en:
 
-- El **popup del marcador**: destino, conductor, barra de progreso y llegada estimada.
+- El **popup del marcador**: fase actual, producto, conductor, barra de progreso y llegada estimada.
 - La sección **"En ruta · con despacho"** del panel Flota (clic en la fila → el mapa vuela al vehículo).
-- El **panel Despacho**: barra de progreso y segundos restantes.
+- El **panel Despacho**: badge de fase, barra de progreso y segundos restantes.
 
 Al llegar al destino el servicio **se completa solo** y aparece el aviso "Servicio completado automáticamente". El botón **Completar** sigue disponible para cerrar el servicio antes de tiempo.
 
@@ -139,13 +151,26 @@ Al llegar al destino el servicio **se completa solo** y aparece el aviso "Servic
 
 ## Operación (MVP)
 
-El panel **Operacion** (columna izquierda del dashboard) agrupa la gestión de negocio sobre la flota simulada:
+### Roles y consolas
+
+- **Consola de administración** (rol `admin`): pestañas **Puntos de recogida**, **Vehículos**, **Conductores** y **Usuarios**. Sin mapa de despacho.
+- **Dashboard de la operadora** (rol `operator`): mapa en vivo, panel Flota (solo lectura), panel Despacho, Órdenes, Reportes, Auditoría y control por voz.
+- **Admin semilla**: al arrancar se crea el perfil `ADMIN_SEED_EMAIL` (por defecto `admin@ecospatial.local`) con rol administrador si no existe. Desde su sesión se crean usuarios con rol (operadora o administrador); el usuario creado inscribe después su dispositivo biométrico con el mismo correo en la pantalla de registro.
+- El registro público siempre crea **operadores**. Solo un admin puede crear otros admins (y no puede quitarse el rol si es el único admin).
+- Endpoints: `POST/PATCH/DELETE` de vehículos, conductores, puntos de recogida y usuarios son **solo admin**; crear/completar/cancelar despachos y órdenes es **solo operadora** (el admin no despacha).
+
+### Puntos de recogida (sucursales)
+
+- Maestro de sucursales (nombre, dirección, coordenadas) donde los vehículos cargan el envío. **Solo el administrador** los crea y edita; las operadoras los leen.
+- Se **desactivan** en vez de borrarse: conservan la trazabilidad de los despachos históricos.
+- Coordenadas validadas contra el perímetro urbano de Cúcuta. El seed siembra 3 sucursales de ejemplo (Centro, Norte, Sur).
 
 ### Órdenes de servicio
 
 - Cola de órdenes con **cliente, contacto, destino, prioridad** (baja/media/alta), ventana horaria y notas.
+- **El envío se define completo**: **punto de recogida** (obligatorio; el formulario sugiere la sucursal más cercana al destino), **tipo de carga** (obligatorio: general/refrigerado/frágil/express/paquetería), **producto/contenido** (obligatorio) y **cantidad** (opcional).
 - **Destino en tres formatos**: buscador con sugerencias por nombre (geocodificación Nominatim/OSM restringida a Cúcuta), **"Elegir en el mapa"** (clic sobre el mapa con nombre automático por geocodificación inversa) o coordenadas directas (`lat, lng` en el buscador o en los campos). El formulario avisa si el punto queda fuera del perímetro urbano.
-- Flujo formal: **Nueva orden → Despachar** abre la misma vista previa del flujo de despacho (vehículo más cercano, distancia, ETA) y al **Aprobar viaje** la orden queda `asignada` con trazabilidad `orden → despacho`.
+- Flujo formal: **Nueva orden → Despachar** abre la vista previa con los datos del envío (recogida, producto, tipo de carga) y al **Aprobar viaje** la orden queda `asignada` con trazabilidad `orden → despacho`.
 - Al completar el servicio la orden pasa a `completada`; si el despacho se **cancela**, la orden **vuelve a la cola** para reasignarla.
 - Los destinos se validan contra el perímetro urbano de Cúcuta.
 
@@ -161,7 +186,7 @@ El panel **Operacion** (columna izquierda del dashboard) agrupa la gestión de n
   - **En ruta** (`en_ruta`): tiene un despacho activo.
 - **Transiciones**: al eliminar o desasignar un conductor, su vehículo pasa a **Libre** para asignarse a otro (si iba en ruta, queda Libre al terminar el viaje). Al crear un vehículo sin conductor también queda Libre.
 - **La disponibilidad del conductor manda sobre su vehículo**: al marcar un conductor *no disponible*, su vehículo pasa a `no_disponible`; al marcarlo *disponible* vuelve a `libre`.
-- **Alta de vehículos**: botón **"Nuevo vehículo"** en el panel Flota (placa, tipo de carga, posición y conductor opcional). La placa es única: una repetida responde 409.
+- **Alta de vehículos** (solo administrador, pestaña Vehículos): placa, **tipo de carga obligatorio** (define qué puede transportar), posición y conductor opcional. La placa es única: una repetida responde 409.
 - El estado del conductor cambia solo: `en_viaje` al aprobar un despacho y `disponible` al completar/cancelar (si el operador marcó al conductor *no disponible* durante el viaje, se respeta su estado).
 - Al arrancar, el servidor repara datos heredados: vehículos sin conductor pasan a Libre y se resuelven vínculos duplicados.
 
@@ -190,10 +215,16 @@ El panel **Operacion** (columna izquierda del dashboard) agrupa la gestión de n
 | GET | `/api/auth/me` | Usuario de la sesión (JWT) |
 | GET | `/api/vehicles?status=libre` | Lista / filtra flota |
 | GET | `/api/vehicles?format=jsonld` | Flota serializada en JSON-LD |
-| POST | `/api/vehicles` | Crea vehículo |
-| PATCH | `/api/vehicles/:id` | Actualiza vehículo |
-| POST | `/api/dispatch/preview` | Vista previa: vehículo + ruta sin asignar ni guardar |
-| POST | `/api/dispatch` | Asigna el vehículo más cercano y traza ruta (`vehicleId` opcional) |
+| POST | `/api/vehicles` | Crea vehículo (**solo admin**; `cargoType` obligatorio) |
+| PATCH/DELETE | `/api/vehicles/:id` | Actualiza / elimina vehículo (**solo admin**) |
+| GET | `/api/pickup-points?active=true` | Puntos de recogida (sucursales) |
+| POST | `/api/pickup-points` | Crea sucursal (**solo admin**; dentro de Cúcuta) |
+| PATCH | `/api/pickup-points/:id` | Edita / desactiva sucursal (**solo admin**) |
+| GET | `/api/users` | Lista usuarios con rol (**solo admin**) |
+| POST | `/api/users` | Crea perfil con rol (**solo admin**); luego inscribe su dispositivo |
+| PATCH | `/api/users/:id/role` | Cambia el rol (**solo admin**) |
+| POST | `/api/dispatch/preview` | Vista previa del envío: vehículo compatible + recogida sugerida + ruta de dos tramos (solo operadora) |
+| POST | `/api/dispatch` | Asigna el vehículo compatible más cercano a la recogida (`cargoType` y `productLabel` obligatorios; `pickupPointId` opcional → sugerido) |
 | GET | `/api/dispatch` | Historial de despachos |
 | GET | `/api/dispatch/active` | Despachos activos con progreso y segundos restantes |
 | GET | `/api/dispatch/:id/jsonld` | Despacho en JSON-LD |

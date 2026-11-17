@@ -8,6 +8,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { Driver } from './driver.entity';
+import { CargoType } from '../common/cargo-type';
 
 export enum VehicleStatus {
   FREE = 'libre',
@@ -49,8 +50,13 @@ export class Vehicle {
   @Column('double precision')
   lng: number;
 
-  @Column({ name: 'cargo_type', type: 'text', nullable: true })
-  cargoType?: string;
+  /**
+   * Capacidad del vehiculo: es el UNICO tipo de carga que transporta.
+   * La asignacion de despachos exige coincidencia exacta con el tipo
+   * pedido por la operadora.
+   */
+  @Column({ type: 'enum', enum: CargoType, default: CargoType.GENERAL })
+  cargoType: CargoType;
 
   @UpdateDateColumn({ name: 'last_update', type: 'timestamptz' })
   lastUpdate: Date;

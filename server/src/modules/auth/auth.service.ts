@@ -39,7 +39,7 @@ function fromBase64Url(value: string): Uint8Array {
 
 export interface AuthResult {
   token: string;
-  user: { id: string; email: string; name: string };
+  user: { id: string; email: string; name: string; role: string };
 }
 
 export type AuthenticatorMethod = 'device' | 'securityKey' | 'phone';
@@ -97,8 +97,11 @@ export class AuthService {
     name: string,
     method: AuthenticatorMethod = 'device',
   ) {
-    const existing = await this.usersService.findByEmail(email);
-    if (existing) {
+    // Un perfil pre-creado por el administrador (sin dispositivos aun)
+    // puede inscribir su biometria aqui; solo se bloquea si ya tiene
+    // credenciales registradas.
+    const existing = await this.usersService.findByEmailWithCredentials(email);
+    if (existing && (existing.credentials?.length ?? 0) > 0) {
       throw new ConflictException(
         'Ya existe una cuenta registrada con ese correo. Inicia sesion para agregar un dispositivo.',
       );
@@ -106,7 +109,8 @@ export class AuthService {
 
     // El perfil se crea recien en verifyRegistration: si el usuario cancela
     // el dialogo WebAuthn no queda un perfil huerfano con el correo quemado.
-    const userId = randomUUID();
+    // Para perfiles pre-creados se conserva su id y su rol.
+    const userId = existing?.id ?? randomUUID();
 
     const options = await generateRegistrationOptions({
       rpName: this.rpName,
@@ -158,12 +162,19 @@ export class AuthService {
       async (manager) => {
         let profile: User | null;
         if (entry.email && entry.name) {
-          // Registro publico: crear el perfil nuevo (el constraint unique de
-          // la BD convierte una carrera entre registros en un 409).
-          profile = await this.usersService.create(
-            { id: entry.userId, email: entry.email, name: entry.name },
-            manager,
-          );
+          // Perfil pre-creado por el administrador: se reutiliza (conserva
+          // su rol). Si no existe, registro publico: crear el perfil nuevo
+          // (el constraint unique de la BD convierte una carrera entre
+          // registros en un 409).
+          profile = await manager.getRepository(User).findOne({
+            where: { id: entry.userId },
+          });
+          if (!profile) {
+            profile = await this.usersService.create(
+              { id: entry.userId, email: entry.email, name: entry.name },
+              manager,
+            );
+          }
         } else {
           // Agregar dispositivo: el perfil ya existe y fue autenticado.
           profile = await manager.getRepository(User).findOne({
@@ -331,7 +342,12 @@ export class AuthService {
     if (!user) {
       throw new UnauthorizedException('Usuario no encontrado');
     }
-    return { id: user.id, email: user.email, name: user.name };
+    return {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+    };
   }
 
   isDevLoginEnabled(): boolean {
@@ -362,10 +378,20 @@ export class AuthService {
   }
 
   private issueToken(user: User): AuthResult {
-    const payload = { sub: user.id, email: user.email };
+    const payload = {
+      sub: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+    };
     return {
       token: this.jwtService.sign(payload),
-      user: { id: user.id, email: user.email, name: user.name },
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+      },
     };
   }
 

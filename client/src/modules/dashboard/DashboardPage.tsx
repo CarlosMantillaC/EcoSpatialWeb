@@ -4,6 +4,7 @@ import { MapView } from '../map/MapView';
 import { VoiceControl } from '../voice/VoiceControl';
 import { useFleetStore } from '../../store/fleet';
 import { useFleetStream } from '../../lib/fleetStream';
+import { usePickupStore } from '../../store/pickup';
 import { DispatchPanel } from './DispatchPanel';
 import { FleetPanel } from './FleetPanel';
 import { OpsPanel } from './OpsPanel';
@@ -11,18 +12,21 @@ import { OpsPanel } from './OpsPanel';
 export function DashboardPage() {
   const loadVehicles = useFleetStore((state) => state.loadVehicles);
   const refresh = useFleetStore((state) => state.refresh);
+  const loadPoints = usePickupStore((state) => state.loadPoints);
 
   // Tiempo real via SSE (movimiento de flota y auto-completado).
   useFleetStream();
 
   useEffect(() => {
     void loadVehicles('all');
+    // Sucursales para el flujo de despacho (sugerir/elegir recogida).
+    void loadPoints();
     // Polling lento como respaldo por si el SSE se cae.
     const interval = window.setInterval(() => {
       void refresh();
     }, 12000);
     return () => window.clearInterval(interval);
-  }, [loadVehicles, refresh]);
+  }, [loadVehicles, refresh, loadPoints]);
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-slate-100 dark:bg-slate-950">

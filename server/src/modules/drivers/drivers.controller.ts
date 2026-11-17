@@ -11,6 +11,9 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { DriverStatus } from '../../entities/driver.entity';
+import { UserRole } from '../../entities/user.entity';
+import { Roles } from '../../common/roles.decorator';
+import { RolesGuard } from '../../common/roles.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AuditService } from '../audit/audit.service';
 import type { RequestUser } from '../auth/request-user';
@@ -18,7 +21,11 @@ import { CreateDriverDto } from './dto/create-driver.dto';
 import { UpdateDriverDto } from './dto/update-driver.dto';
 import { DriversService } from './drivers.service';
 
-@UseGuards(JwtAuthGuard)
+/**
+ * Conductores: lectura para cualquier autenticado; alta, edicion y baja
+ * solo para el administrador (gestion de maestros).
+ */
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('drivers')
 export class DriversController {
   constructor(
@@ -36,6 +43,7 @@ export class DriversController {
     return this.driversService.findOne(id);
   }
 
+  @Roles(UserRole.ADMIN)
   @Post()
   async create(@Body() dto: CreateDriverDto, @Req() req: { user: RequestUser }) {
     const driver = await this.driversService.create(dto);
@@ -49,6 +57,7 @@ export class DriversController {
     return driver;
   }
 
+  @Roles(UserRole.ADMIN)
   @Patch(':id')
   async update(
     @Param('id') id: string,
@@ -66,6 +75,7 @@ export class DriversController {
     return driver;
   }
 
+  @Roles(UserRole.ADMIN)
   @Delete(':id')
   async remove(@Param('id') id: string, @Req() req: { user: RequestUser }) {
     await this.driversService.remove(id);

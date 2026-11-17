@@ -11,6 +11,9 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { VehicleStatus } from '../../entities/vehicle.entity';
+import { UserRole } from '../../entities/user.entity';
+import { Roles } from '../../common/roles.decorator';
+import { RolesGuard } from '../../common/roles.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { RequestUser } from '../auth/request-user';
 import { AuditService } from '../audit/audit.service';
@@ -19,7 +22,11 @@ import { CreateVehicleDto } from './dto/create-vehicle.dto';
 import { UpdateVehicleDto } from './dto/update-vehicle.dto';
 import { VehiclesService } from './vehicles.service';
 
-@UseGuards(JwtAuthGuard)
+/**
+ * Flota: lectura para cualquier autenticado; alta, edicion y baja solo
+ * para el administrador (gestion de maestros).
+ */
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('vehicles')
 export class VehiclesController {
   constructor(
@@ -44,6 +51,7 @@ export class VehiclesController {
     return this.vehiclesService.findOne(id);
   }
 
+  @Roles(UserRole.ADMIN)
   @Post()
   async create(
     @Body() dto: CreateVehicleDto,
@@ -60,6 +68,7 @@ export class VehiclesController {
     return vehicle;
   }
 
+  @Roles(UserRole.ADMIN)
   @Patch(':id')
   async update(
     @Param('id') id: string,
@@ -77,6 +86,7 @@ export class VehiclesController {
     return vehicle;
   }
 
+  @Roles(UserRole.ADMIN)
   @Delete(':id')
   async remove(@Param('id') id: string, @Req() req: { user: RequestUser }) {
     await this.vehiclesService.remove(id);

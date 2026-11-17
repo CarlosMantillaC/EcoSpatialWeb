@@ -32,6 +32,15 @@ export function AppHeader() {
         <div className="hidden text-right sm:block">
           <p className="text-sm font-medium leading-tight text-slate-800 dark:text-slate-100">
             {user?.name}
+            <span
+              className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+                user?.role === 'admin'
+                  ? 'bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300'
+                  : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
+              }`}
+            >
+              {user?.role === 'admin' ? 'Admin' : 'Operadora'}
+            </span>
           </p>
           <p className="text-[11px] leading-tight text-slate-500 dark:text-slate-400">
             {user?.email}

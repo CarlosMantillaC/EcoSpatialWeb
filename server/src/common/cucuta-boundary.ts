@@ -151,6 +151,45 @@ export function isInsideCucuta(point: Coords): boolean {
 }
 
 /**
+ * Tolerancia al validar rutas contra el borde: el anillo esta simplificado
+ * con Douglas-Peucker (error maximo ~11 m), asi que una calle pegada al
+ * limite puede quedar tecnicamente "afuera" por unos metros. Una ruta se
+ * acepta si sus vertices estan dentro del perimetro o a menos de esta
+ * distancia del borde.
+ */
+const ROUTE_EDGE_TOLERANCE_M = 20;
+
+/** Distancia aproximada en metros de un punto a un segmento [lng, lat]. */
+function distanceToSegmentM(point: Coords, a: number[], b: number[]): number {
+  const latToM = 111_320;
+  const lngToM = 111_320 * Math.cos((point.lat * Math.PI) / 180);
+  const ax = (a[0] - point.lng) * lngToM;
+  const ay = (a[1] - point.lat) * latToM;
+  const bx = (b[0] - point.lng) * lngToM;
+  const by = (b[1] - point.lat) * latToM;
+  const dx = bx - ax;
+  const dy = by - ay;
+  const lengthSq = dx * dx + dy * dy;
+  const t =
+    lengthSq === 0
+      ? 0
+      : Math.min(1, Math.max(0, -(ax * dx + ay * dy) / lengthSq));
+  const px = ax + t * dx;
+  const py = ay + t * dy;
+  return Math.sqrt(px * px + py * py);
+}
+
+/** true si el punto esta a <= 20 m del borde del perimetro. */
+function isNearBoundary(point: Coords): boolean {
+  for (let i = 0, j = CUCUTA_BOUNDARY.length - 1; i < CUCUTA_BOUNDARY.length; j = i++) {
+    if (distanceToSegmentM(point, CUCUTA_BOUNDARY[i], CUCUTA_BOUNDARY[j]) <= ROUTE_EDGE_TOLERANCE_M) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * true si TODA la geometria de una ruta (LineString [lng, lat]) se
  * mantiene dentro del perimetro urbano de Cucuta. Geometria vacia o
  * nula se considera valida (no hay evidencia de que salga).
@@ -160,7 +199,10 @@ export function isRouteInsideCucuta(
 ): boolean {
   const coords = toLineStringCoords(geometry as LineStringCoords | null);
   if (!coords || coords.length === 0) return true;
-  return coords.every(([lng, lat]) => isInsideCucuta({ lat, lng }));
+  return coords.every(([lng, lat]) => {
+    const point = { lat, lng };
+    return isInsideCucuta(point) || isNearBoundary(point);
+  });
 }
 
 /** Point-in-polygon por ray casting sobre un anillo [lng, lat]. */

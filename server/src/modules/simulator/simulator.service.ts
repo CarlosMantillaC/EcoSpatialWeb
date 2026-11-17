@@ -7,6 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { Coords } from '../../common/geo';
+import { CargoType, CARGO_TYPES } from '../../common/cargo-type';
 import {
   isInsideCucuta,
   isRouteInsideCucuta,
@@ -43,7 +44,7 @@ const DRIVERS = [
   'Hector Salas',
 ];
 
-const CARGOS = ['general', 'refrigerado', 'fragil', 'express', 'paqueteria'];
+const CARGOS: CargoType[] = CARGO_TYPES;
 
 const INTERVAL_NAME = 'fleet-simulator';
 
@@ -452,7 +453,9 @@ export class SimulatorService implements OnModuleInit, OnModuleDestroy {
         continue;
       }
 
-      const position = this.dispatchService.positionOf(dispatch, progress);
+      const elapsedSec =
+        (Date.now() - new Date(dispatch.createdAt).getTime()) / 1000;
+      const position = this.dispatchService.positionOf(dispatch, elapsedSec);
       // Guarda final: despachos heredados con ruta fuera de Cucuta no
       // muestran el vehiculo fuera del perimetro; al completarse, el
       // trafico de fondo lo reubica dentro del area.

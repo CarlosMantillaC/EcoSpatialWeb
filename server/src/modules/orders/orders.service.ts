@@ -1,17 +1,15 @@
-import {
-  BadRequestException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { isInsideCucuta } from '../../common/cucuta-boundary';
 import { definedProps } from '../../common/objects';
+import { CargoType } from '../../common/cargo-type';
 import {
   ServiceOrder,
   ServiceOrderStatus,
 } from '../../entities/service-order.entity';
 import { DispatchService } from '../dispatch/dispatch.service';
+import { CreateDispatchDto } from '../dispatch/dto/create-dispatch.dto';
 import { CreateOrderDto, UpdateOrderDto } from './dto/order.dto';
 
 @Injectable()
@@ -45,6 +43,10 @@ export class OrdersService {
       destLat: dto.destLat,
       destLng: dto.destLng,
       destLabel: dto.destLabel ?? null,
+      pickupPointId: dto.pickupPointId,
+      cargoType: dto.cargoType,
+      productLabel: dto.productLabel,
+      quantity: dto.quantity ?? null,
       priority: dto.priority,
       windowStart: dto.windowStart ? new Date(dto.windowStart) : null,
       windowEnd: dto.windowEnd ? new Date(dto.windowEnd) : null,
@@ -102,11 +104,7 @@ export class OrdersService {
           'Solo las ordenes pendientes tienen vista previa',
         );
       }
-      return this.dispatchService.preview({
-        destLat: order.destLat,
-        destLng: order.destLng,
-        destLabel: order.destLabel ?? undefined,
-      });
+      return this.dispatchService.preview(this.dispatchDtoFor(order));
     });
   }
 
@@ -117,12 +115,31 @@ export class OrdersService {
       throw new BadRequestException('La orden ya fue despachada o cancelada');
     }
     return this.dispatchService.create({
-      destLat: order.destLat,
-      destLng: order.destLng,
-      destLabel: order.destLabel ?? undefined,
+      ...this.dispatchDtoFor(order),
       vehicleId,
       orderId: order.id,
     });
+  }
+
+  /**
+   * Los datos del envio de la orden (recogida, tipo de carga, producto)
+   * viajan al despacho: el viaje siempre se planifica sobre el envio
+   * completo, no solo sobre el destino.
+   */
+  private dispatchDtoFor(order: ServiceOrder): CreateDispatchDto {
+    return {
+      destLat: order.destLat,
+      destLng: order.destLng,
+      destLabel: order.destLabel ?? undefined,
+      pickupPointId: order.pickupPointId ?? undefined,
+      cargoType: order.cargoType ?? CargoType.GENERAL,
+      productLabel: order.productLabel ?? 'Envio',
+      quantity: order.quantity ?? undefined,
+    };
+  }
+
+  count(): Promise<number> {
+    return this.ordersRepository.count();
   }
 
   private assertDestinationInCucuta(lat: number, lng: number) {

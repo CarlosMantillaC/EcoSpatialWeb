@@ -3,10 +3,14 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { geocodeApi, ordersApi } from '../../lib/api';
 import { useFleetStore } from '../../store/fleet';
 import { useOpsStore } from '../../store/ops';
-import type {
-  GeocodeSuggestion,
-  ServiceOrder,
-  ServiceOrderPriority,
+import { usePickupStore } from '../../store/pickup';
+import {
+  CARGO_LABELS,
+  CARGO_TYPES,
+  type CargoType,
+  type GeocodeSuggestion,
+  type ServiceOrder,
+  type ServiceOrderPriority,
 } from '../../types';
 
 const PRIORITY_STYLE: Record<ServiceOrderPriority, string> = {
@@ -63,6 +67,8 @@ export function OrdersTab() {
   const pickedPoint = useOpsStore((state) => state.pickedPoint);
   const setPickingOnMap = useOpsStore((state) => state.setPickingOnMap);
   const setPickedPoint = useOpsStore((state) => state.setPickedPoint);
+  const pickupPoints = usePickupStore((state) => state.points);
+  const loadPoints = usePickupStore((state) => state.loadPoints);
 
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -79,13 +85,34 @@ export function OrdersTab() {
     destLabel: '',
     destLat: String(7.889),
     destLng: String(-72.4967),
+    pickupPointId: '',
+    cargoType: 'general' as CargoType,
+    productLabel: '',
+    quantity: '',
     priority: 'media' as ServiceOrderPriority,
     notes: '',
   });
 
   useEffect(() => {
     void loadOrders();
-  }, [loadOrders]);
+    void loadPoints();
+  }, [loadOrders, loadPoints]);
+
+  // Sugiere la sucursal mas cercana al destino mientras no se elija otra.
+  useEffect(() => {
+    if (form.pickupPointId || pickupPoints.length === 0) return;
+    const lat = Number(form.destLat);
+    const lng = Number(form.destLng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    const nearest = pickupPoints.reduce((best, point) => {
+      const distance = (point.lat - lat) ** 2 + (point.lng - lng) ** 2;
+      const bestDistance = (best.lat - lat) ** 2 + (best.lng - lng) ** 2;
+      return distance < bestDistance ? point : best;
+    });
+    setForm((current) => ({ ...current, pickupPointId: nearest.id }));
+    // Solo al abrir el formulario o al cambiar la sucursal disponible.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickupPoints]);
 
   // Busqueda por nombre con debounce; "lat, lng" se toma como coordenada.
   useEffect(() => {
@@ -147,10 +174,22 @@ export function OrdersTab() {
         destLat: Number(form.destLat),
         destLng: Number(form.destLng),
         destLabel: form.destLabel || undefined,
+        pickupPointId: form.pickupPointId,
+        cargoType: form.cargoType,
+        productLabel: form.productLabel,
+        quantity: form.quantity ? Number(form.quantity) : undefined,
         priority: form.priority,
         notes: form.notes || undefined,
       });
-      setForm({ ...form, clientName: '', contact: '', destLabel: '', notes: '' });
+      setForm({
+        ...form,
+        clientName: '',
+        contact: '',
+        destLabel: '',
+        productLabel: '',
+        quantity: '',
+        pickupPointId: '',
+      });
       closeForm();
       await loadOrders();
     } catch (err: any) {
@@ -345,6 +384,56 @@ export function OrdersTab() {
               dentro del perimetro urbano.
             </p>
           )}
+          <input
+            className={INPUT}
+            placeholder="Producto / contenido * (ej. Insulina NPH 100UI)"
+            required
+            value={form.productLabel}
+            onChange={(e) =>
+              setForm({ ...form, productLabel: e.target.value })
+            }
+          />
+          <div className="grid grid-cols-2 gap-2">
+            <input
+              className={INPUT}
+              type="number"
+              min={1}
+              placeholder="Cantidad"
+              value={form.quantity}
+              onChange={(e) => setForm({ ...form, quantity: e.target.value })}
+            />
+            <select
+              className={INPUT}
+              value={form.cargoType}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  cargoType: e.target.value as CargoType,
+                })
+              }
+            >
+              {CARGO_TYPES.map((type) => (
+                <option key={type} value={type}>
+                  Carga: {CARGO_LABELS[type]}
+                </option>
+              ))}
+            </select>
+          </div>
+          <select
+            className={INPUT}
+            required
+            value={form.pickupPointId}
+            onChange={(e) =>
+              setForm({ ...form, pickupPointId: e.target.value })
+            }
+          >
+            <option value="">Punto de recogida *</option>
+            {pickupPoints.map((point) => (
+              <option key={point.id} value={point.id}>
+                Recoger en: {point.name}
+              </option>
+            ))}
+          </select>
           <select
             className={INPUT}
             value={form.priority}
@@ -404,6 +493,15 @@ export function OrdersTab() {
             {order.clientName}
           </p>
           <p className="truncate text-xs text-slate-500 dark:text-slate-400">
+            {order.productLabel ?? 'Envio'}
+            {order.quantity ? ` × ${order.quantity}` : ''}
+            {order.cargoType ? ` · ${CARGO_LABELS[order.cargoType]}` : ''}
+          </p>
+          <p className="truncate text-xs text-slate-500 dark:text-slate-400">
+            Recogida:{' '}
+            {pickupPoints.find((point) => point.id === order.pickupPointId)
+              ?.name ?? 'por definir'}{' '}
+            · Entrega:{' '}
             {order.destLabel ?? `${order.destLat.toFixed(4)}, ${order.destLng.toFixed(4)}`}
           </p>
 

@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { driversApi, vehiclesApi } from '../../lib/api';
 import { useFleetStore } from '../../store/fleet';
-import type { Driver } from '../../types';
+import { CARGO_LABELS, CARGO_TYPES, type CargoType, type Driver } from '../../types';
 
 const INPUT =
   'w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-800 outline-none focus:border-emerald-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100';
@@ -28,7 +28,7 @@ export function NewVehicleForm({
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({
     plate: '',
-    cargoType: '',
+    cargoType: 'general' as CargoType,
     lat: CENTER_LAT,
     lng: CENTER_LNG,
     driverId: '',
@@ -53,7 +53,7 @@ export function NewVehicleForm({
     try {
       await vehiclesApi.create({
         plate: form.plate,
-        cargoType: form.cargoType || undefined,
+        cargoType: form.cargoType,
         lat: Number(form.lat),
         lng: Number(form.lng),
         driverId: form.driverId || undefined,
@@ -84,12 +84,20 @@ export function NewVehicleForm({
         value={form.plate}
         onChange={(e) => setForm({ ...form, plate: e.target.value })}
       />
-      <input
+      <select
         className={INPUT}
-        placeholder="Tipo de carga (general, refrigerado...)"
+        required
         value={form.cargoType}
-        onChange={(e) => setForm({ ...form, cargoType: e.target.value })}
-      />
+        onChange={(e) =>
+          setForm({ ...form, cargoType: e.target.value as CargoType })
+        }
+      >
+        {CARGO_TYPES.map((type) => (
+          <option key={type} value={type}>
+            Tipo de carga: {CARGO_LABELS[type]}
+          </option>
+        ))}
+      </select>
       <div className="grid grid-cols-2 gap-2">
         <input
           className={INPUT}

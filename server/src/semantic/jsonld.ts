@@ -11,6 +11,9 @@ export const ECO_CONTEXT = {
   cargoType: 'eco:cargoType',
   location: 'schema:location',
   lastUpdate: 'eco:lastUpdate',
+  pickupPoint: 'eco:pickupPoint',
+  productLabel: 'eco:productLabel',
+  quantity: 'eco:quantity',
 };
 
 export function vehicleToJsonLd(vehicle: Vehicle) {
@@ -39,11 +42,23 @@ export function dispatchToJsonLd(dispatch: Dispatch) {
     '@id': `eco:dispatch/${dispatch.id}`,
     status: dispatch.status,
     driverName: null,
+    pickupPoint: dispatch.pickupLabel ?? null,
+    itemShipped: dispatch.productLabel ?? null,
+    productLabel: dispatch.productLabel ?? null,
+    quantity: dispatch.quantity ?? null,
+    cargoType: dispatch.cargoType ?? null,
     from: {
       '@type': 'schema:GeoCoordinates',
       latitude: dispatch.originLat,
       longitude: dispatch.originLng,
     },
+    pickup: dispatch.pickupLat != null && dispatch.pickupLng != null
+      ? {
+          '@type': 'schema:GeoCoordinates',
+          latitude: dispatch.pickupLat,
+          longitude: dispatch.pickupLng,
+        }
+      : null,
     to: {
       '@type': 'schema:GeoCoordinates',
       latitude: dispatch.destLat,

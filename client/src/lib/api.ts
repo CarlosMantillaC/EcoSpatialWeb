@@ -1,10 +1,12 @@
 import axios from 'axios';
 import type {
   ActiveDispatch,
+  AdminUser,
   AuditLogEntry,
   AuthResponse,
   AuthUser,
   AuthenticatorMethod,
+  CargoType,
   Dispatch,
   DispatchPreview,
   DispatchResponse,
@@ -12,9 +14,11 @@ import type {
   DriverStatus,
   FleetAlert,
   GeocodeSuggestion,
+  PickupPoint,
   ReportSummary,
   ServiceOrder,
   ServiceOrderStatus,
+  UserRole,
   Vehicle,
   VehicleStatus,
 } from '../types';
@@ -88,7 +92,7 @@ export const vehiclesApi = {
   listJsonLd: () => api.get('/vehicles', { params: { format: 'jsonld' } }),
   create: (data: {
     plate: string;
-    cargoType?: string;
+    cargoType: CargoType;
     lat: number;
     lng: number;
     driverId?: string | null;
@@ -99,44 +103,73 @@ export const vehiclesApi = {
       plate?: string;
       driverName?: string;
       driverId?: string | null;
-      cargoType?: string;
+      cargoType?: CargoType;
       status?: VehicleStatus;
     },
   ) => api.patch<Vehicle>(`/vehicles/${id}`, data).then((r) => r.data),
 };
 
+/** Campos del envio compartidos por preview y creacion de despacho. */
+export interface DispatchPayload {
+  destLat: number;
+  destLng: number;
+  destLabel?: string;
+  pickupPointId?: string;
+  cargoType: CargoType;
+  productLabel: string;
+  quantity?: number;
+  vehicleId?: string;
+  orderId?: string;
+}
+
 export const dispatchApi = {
   list: () => api.get<Dispatch[]>('/dispatch').then((r) => r.data),
   active: () =>
     api.get<ActiveDispatch[]>('/dispatch/active').then((r) => r.data),
-  preview: (destLat: number, destLng: number, destLabel?: string) =>
+  preview: (payload: DispatchPayload) =>
     api
-      .post<Omit<DispatchPreview, 'destination'>>('/dispatch/preview', {
-        destLat,
-        destLng,
-        destLabel,
-      })
+      .post<DispatchPreview>('/dispatch/preview', payload)
       .then((r) => r.data),
-  create: (
-    destLat: number,
-    destLng: number,
-    destLabel?: string,
-    vehicleId?: string,
-    orderId?: string,
-  ) =>
-    api
-      .post<DispatchResponse>('/dispatch', {
-        destLat,
-        destLng,
-        destLabel,
-        vehicleId,
-        orderId,
-      })
-      .then((r) => r.data),
+  create: (payload: DispatchPayload) =>
+    api.post<DispatchResponse>('/dispatch', payload).then((r) => r.data),
   complete: (id: string) =>
     api.post<Dispatch>(`/dispatch/${id}/complete`).then((r) => r.data),
   cancel: (id: string) =>
     api.post<Dispatch>(`/dispatch/${id}/cancel`).then((r) => r.data),
+};
+
+export const pickupPointsApi = {
+  list: (activeOnly = false) =>
+    api
+      .get<PickupPoint[]>('/pickup-points', {
+        params: activeOnly ? { active: 'true' } : {},
+      })
+      .then((r) => r.data),
+  create: (data: {
+    name: string;
+    address?: string;
+    lat: number;
+    lng: number;
+    active?: boolean;
+  }) => api.post<PickupPoint>('/pickup-points', data).then((r) => r.data),
+  update: (
+    id: string,
+    data: {
+      name?: string;
+      address?: string | null;
+      lat?: number;
+      lng?: number;
+      active?: boolean;
+    },
+  ) => api.patch<PickupPoint>(`/pickup-points/${id}`, data).then((r) => r.data),
+};
+
+export const usersApi = {
+  list: () => api.get<AdminUser[]>('/users').then((r) => r.data),
+  create: (data: { name: string; email: string; role?: UserRole }) =>
+    api.post<AdminUser>('/users', data).then((r) => r.data),
+  updateRole: (id: string, role: UserRole) =>
+    api.patch<AdminUser>(`/users/${id}/role`, { role }).then((r) => r.data),
 };
 
 export const driversApi = {
@@ -168,6 +201,10 @@ export const ordersApi = {
     destLat: number;
     destLng: number;
     destLabel?: string;
+    pickupPointId: string;
+    cargoType: CargoType;
+    productLabel: string;
+    quantity?: number;
     priority?: 'baja' | 'media' | 'alta';
     notes?: string;
   }) => api.post<ServiceOrder>('/orders', data).then((r) => r.data),
