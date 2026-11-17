@@ -187,4 +187,16 @@ export interface LatLng {
   lng: number;
 }
 
+/** Sugerencia de geocodificacion (busqueda por nombre). */
+export interface GeocodeSuggestion {
+  label: string;
+  lat: number;
+  lng: number;
+}
+
+/** Punto elegido en el mapa para el formulario de ordenes. */
+export interface PickedPoint extends LatLng {
+  label?: string;
+}
+
 export type AuthenticatorMethod = 'device' | 'securityKey' | 'phone';

@@ -11,6 +11,7 @@ import type {
   Driver,
   DriverStatus,
   FleetAlert,
+  GeocodeSuggestion,
   ReportSummary,
   ServiceOrder,
   ServiceOrderStatus,
@@ -192,6 +193,19 @@ export const auditApi = {
   list: (limit = 50) =>
     api
       .get<AuditLogEntry[]>('/audit', { params: { limit } })
+      .then((r) => r.data),
+};
+
+export const geocodeApi = {
+  /** Busca lugares por nombre (restringidos al area de Cucuta). */
+  search: (q: string, limit = 5) =>
+    api
+      .get<GeocodeSuggestion[]>('/geocode', { params: { q, limit } })
+      .then((r) => r.data),
+  /** Nombre legible de un punto; puede ser null si no hay proveedor. */
+  reverse: (lat: number, lng: number) =>
+    api
+      .get<{ label: string | null }>('/geocode/reverse', { params: { lat, lng } })
       .then((r) => r.data),
 };
 

@@ -144,6 +144,7 @@ El panel **Operacion** (columna izquierda del dashboard) agrupa la gestión de n
 ### Órdenes de servicio
 
 - Cola de órdenes con **cliente, contacto, destino, prioridad** (baja/media/alta), ventana horaria y notas.
+- **Destino en tres formatos**: buscador con sugerencias por nombre (geocodificación Nominatim/OSM restringida a Cúcuta), **"Elegir en el mapa"** (clic sobre el mapa con nombre automático por geocodificación inversa) o coordenadas directas (`lat, lng` en el buscador o en los campos). El formulario avisa si el punto queda fuera del perímetro urbano.
 - Flujo formal: **Nueva orden → Despachar** abre la misma vista previa del flujo de despacho (vehículo más cercano, distancia, ETA) y al **Aprobar viaje** la orden queda `asignada` con trazabilidad `orden → despacho`.
 - Al completar el servicio la orden pasa a `completada`; si el despacho se **cancela**, la orden **vuelve a la cola** para reasignarla.
 - Los destinos se validan contra el perímetro urbano de Cúcuta.
@@ -212,6 +213,8 @@ El panel **Operacion** (columna izquierda del dashboard) agrupa la gestión de n
 | GET | `/api/reports/summary` | KPIs, servicios por día y vehículos destacados (`?from=&to=`) |
 | GET | `/api/reports/dispatches.csv` | Exportación CSV del historial de despachos |
 | GET | `/api/audit` | Bitácora de auditoría (`?action=&limit=`) |
+| GET | `/api/geocode` | Búsqueda de lugares por nombre en Cúcuta (`?q=&limit=`) |
+| GET | `/api/geocode/reverse` | Nombre legible de un punto (`?lat=&lng=`) |
 
 ## Estructura
 
@@ -242,6 +245,7 @@ EcoSpatialWeb/
       │  ├─ alerts/           # Alertas operativas (SSE)
       │  ├─ audit/            # Bitacora de acciones
       │  ├─ reports/          # KPIs, agregaciones y CSV
+      │  ├─ geocoding/        # Busqueda/reversa de lugares (Nominatim)
       │  ├─ events/           # Stream SSE de estado de flota
       │  ├─ routing/          # Cliente OSRM
       │  └─ simulator/        # Movimiento de flota + auto-completado

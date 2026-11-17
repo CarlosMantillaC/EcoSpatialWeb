@@ -9,6 +9,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { DispatchModule } from './modules/dispatch/dispatch.module';
 import { DriversModule } from './modules/drivers/drivers.module';
 import { EventsModule } from './modules/events/events.module';
+import { GeocodingModule } from './modules/geocoding/geocoding.module';
 import { OrdersModule } from './modules/orders/orders.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { RoutingModule } from './modules/routing/routing.module';
@@ -52,6 +53,7 @@ import { VehiclesModule } from './modules/vehicles/vehicles.module';
     RoutingModule,
     DispatchModule,
     OrdersModule,
+    GeocodingModule,
     AlertsModule,
     AuditModule,
     ReportsModule,

@@ -32,6 +32,9 @@ export interface AppConfig {
   osrm: {
     baseUrl: string;
   };
+  geocode: {
+    baseUrl: string;
+  };
 }
 
 export default (): AppConfig => ({
@@ -74,5 +77,9 @@ export default (): AppConfig => ({
   },
   osrm: {
     baseUrl: process.env.OSRM_BASE_URL ?? 'https://router.project-osrm.org',
+  },
+  geocode: {
+    baseUrl:
+      process.env.GEOCODE_BASE_URL ?? 'https://nominatim.openstreetmap.org',
   },
 });

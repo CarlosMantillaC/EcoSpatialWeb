@@ -1,9 +1,13 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
-import { ordersApi } from '../../lib/api';
+import { geocodeApi, ordersApi } from '../../lib/api';
 import { useFleetStore } from '../../store/fleet';
 import { useOpsStore } from '../../store/ops';
-import type { ServiceOrder, ServiceOrderPriority } from '../../types';
+import type {
+  GeocodeSuggestion,
+  ServiceOrder,
+  ServiceOrderPriority,
+} from '../../types';
 
 const PRIORITY_STYLE: Record<ServiceOrderPriority, string> = {
   baja: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
@@ -25,6 +29,26 @@ const STATUS_STYLE: Record<ServiceOrder['status'], string> = {
 const INPUT =
   'w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-800 outline-none focus:border-emerald-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100';
 
+/** "lat, lng" escrito directamente en el campo de destino. */
+const COORD_PATTERN = /^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/;
+
+/** Aproximacion del area de Cucuta para avisar antes de enviar. */
+const CUCUTA_BOUNDS = {
+  minLat: 7.845,
+  maxLat: 7.935,
+  minLng: -72.56,
+  maxLng: -72.43,
+};
+
+/** Nombre corto para el campo de destino (Nominatim devuelve direcciones largas). */
+function shortLabel(label: string): string {
+  return label
+    .split(',')
+    .slice(0, 2)
+    .map((part) => part.trim())
+    .join(', ');
+}
+
 /** Cola de ordenes de servicio: alta, despacho y cancelacion. */
 export function OrdersTab() {
   const orders = useOpsStore((state) => state.orders);
@@ -35,12 +59,20 @@ export function OrdersTab() {
   const startOrderDispatch = useFleetStore(
     (state) => state.startOrderDispatch,
   );
+  const pickingOnMap = useOpsStore((state) => state.pickingOnMap);
+  const pickedPoint = useOpsStore((state) => state.pickedPoint);
+  const setPickingOnMap = useOpsStore((state) => state.setPickingOnMap);
+  const setPickedPoint = useOpsStore((state) => state.setPickedPoint);
 
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [orderToDelete, setOrderToDelete] = useState<ServiceOrder | null>(null);
   const [orderToCancel, setOrderToCancel] = useState<ServiceOrder | null>(null);
+  const [suggestions, setSuggestions] = useState<GeocodeSuggestion[]>([]);
+  const [searching, setSearching] = useState(false);
+  // Evita re-buscar cuando el destino se llena programaticamente.
+  const skipSearch = useRef(false);
   const [form, setForm] = useState({
     clientName: '',
     contact: '',
@@ -54,6 +86,55 @@ export function OrdersTab() {
   useEffect(() => {
     void loadOrders();
   }, [loadOrders]);
+
+  // Busqueda por nombre con debounce; "lat, lng" se toma como coordenada.
+  useEffect(() => {
+    const text = form.destLabel.trim();
+    if (skipSearch.current) {
+      skipSearch.current = false;
+      return;
+    }
+    if (text.length < 3 || COORD_PATTERN.test(text)) {
+      setSuggestions([]);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setSearching(true);
+      geocodeApi
+        .search(text)
+        .then((results) => setSuggestions(results))
+        .catch(() => setSuggestions([]))
+        .finally(() => setSearching(false));
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [form.destLabel]);
+
+  // El clic en el mapa (modo "Elegir en el mapa") llena el formulario.
+  useEffect(() => {
+    if (!pickedPoint) return;
+    skipSearch.current = true;
+    setSuggestions([]);
+    setForm((current) => ({
+      ...current,
+      destLabel: pickedPoint.label
+        ? shortLabel(pickedPoint.label)
+        : current.destLabel,
+      destLat: String(pickedPoint.lat),
+      destLng: String(pickedPoint.lng),
+    }));
+    setPickingOnMap(false);
+    // El punto se mantiene visible en el mapa hasta cerrar el formulario.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickedPoint]);
+
+  // Al irse de la pestana no queda un modo seleccion colgado.
+  useEffect(
+    () => () => {
+      useOpsStore.getState().setPickingOnMap(false);
+      useOpsStore.getState().setPickedPoint(null);
+    },
+    [],
+  );
 
   async function handleCreate(event: FormEvent) {
     event.preventDefault();
@@ -70,7 +151,7 @@ export function OrdersTab() {
         notes: form.notes || undefined,
       });
       setForm({ ...form, clientName: '', contact: '', destLabel: '', notes: '' });
-      setShowForm(false);
+      closeForm();
       await loadOrders();
     } catch (err: any) {
       const message = err?.response?.data?.message;
@@ -83,6 +164,40 @@ export function OrdersTab() {
       setSaving(false);
     }
   }
+
+  /** Elige una sugerencia de busqueda: nombre + coordenadas. */
+  function pickSuggestion(suggestion: GeocodeSuggestion) {
+    skipSearch.current = true;
+    setSuggestions([]);
+    setForm((current) => ({
+      ...current,
+      destLabel: shortLabel(suggestion.label),
+      destLat: String(suggestion.lat),
+      destLng: String(suggestion.lng),
+    }));
+  }
+
+  function toggleForm() {
+    if (showForm) closeForm();
+    else setShowForm(true);
+  }
+
+  function closeForm() {
+    setShowForm(false);
+    setSuggestions([]);
+    setPickingOnMap(false);
+    setPickedPoint(null);
+  }
+
+  const latNum = Number(form.destLat);
+  const lngNum = Number(form.destLng);
+  const outsideCucuta =
+    Number.isFinite(latNum) &&
+    Number.isFinite(lngNum) &&
+    (latNum < CUCUTA_BOUNDS.minLat ||
+      latNum > CUCUTA_BOUNDS.maxLat ||
+      lngNum < CUCUTA_BOUNDS.minLng ||
+      lngNum > CUCUTA_BOUNDS.maxLng);
 
   async function handleCancel(id: string) {
     setError(null);
@@ -120,7 +235,7 @@ export function OrdersTab() {
         </p>
         <button
           type="button"
-          onClick={() => setShowForm(!showForm)}
+          onClick={toggleForm}
           className="rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-700"
         >
           {showForm ? 'Cerrar' : 'Nueva orden'}
@@ -148,12 +263,49 @@ export function OrdersTab() {
             value={form.contact}
             onChange={(e) => setForm({ ...form, contact: e.target.value })}
           />
-          <input
-            className={INPUT}
-            placeholder="Destino (descripcion)"
-            value={form.destLabel}
-            onChange={(e) => setForm({ ...form, destLabel: e.target.value })}
-          />
+          <div className="relative">
+            <input
+              className={INPUT}
+              placeholder="Destino: busca por nombre o escribe 'lat, lng'"
+              value={form.destLabel}
+              onChange={(e) => {
+                const value = e.target.value;
+                const coords = value.match(COORD_PATTERN);
+                if (coords) {
+                  // Coordenadas directas: sin geocodificar.
+                  skipSearch.current = true;
+                  setSuggestions([]);
+                  setForm((current) => ({
+                    ...current,
+                    destLabel: value,
+                    destLat: coords[1],
+                    destLng: coords[2],
+                  }));
+                  return;
+                }
+                setForm((current) => ({ ...current, destLabel: value }));
+              }}
+            />
+            {(searching || suggestions.length > 0) && (
+              <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-44 space-y-0.5 overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-800">
+                {searching && (
+                  <p className="px-2 py-1 text-[10px] text-slate-400">
+                    Buscando...
+                  </p>
+                )}
+                {suggestions.map((suggestion) => (
+                  <button
+                    key={`${suggestion.lat},${suggestion.lng}`}
+                    type="button"
+                    onClick={() => pickSuggestion(suggestion)}
+                    className="block w-full rounded-lg px-2 py-1.5 text-left text-[11px] leading-snug text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700"
+                  >
+                    {suggestion.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <div className="grid grid-cols-2 gap-2">
             <input
               className={INPUT}
@@ -174,6 +326,25 @@ export function OrdersTab() {
               onChange={(e) => setForm({ ...form, destLng: e.target.value })}
             />
           </div>
+          <button
+            type="button"
+            onClick={() => setPickingOnMap(!pickingOnMap)}
+            className={`w-full rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
+              pickingOnMap
+                ? 'border-violet-600 bg-violet-600 text-white'
+                : 'border-slate-200 text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'
+            }`}
+          >
+            {pickingOnMap
+              ? 'Cancelar seleccion en el mapa'
+              : 'Elegir en el mapa'}
+          </button>
+          {outsideCucuta && (
+            <p className="rounded-lg bg-amber-50 p-2 text-xs text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+              El punto queda fuera del area de Cucuta: el destino debe estar
+              dentro del perimetro urbano.
+            </p>
+          )}
           <select
             className={INPUT}
             value={form.priority}

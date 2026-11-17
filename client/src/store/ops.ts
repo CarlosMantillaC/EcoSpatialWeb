@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { ordersApi } from '../lib/api';
-import type { ServiceOrder, ServiceOrderStatus } from '../types';
+import type { PickedPoint, ServiceOrder, ServiceOrderStatus } from '../types';
 
 export type OpsTab = 'ordenes' | 'conductores' | 'reportes' | 'auditoria';
 
@@ -10,7 +10,13 @@ interface OpsState {
   /** Ordenes de servicio (compartidas entre el panel y el flujo de despacho). */
   orders: ServiceOrder[];
   ordersLoading: boolean;
+  /** Modo "Elegir en el mapa" del formulario de ordenes. */
+  pickingOnMap: boolean;
+  /** Ultimo punto elegido en el mapa (lo consume el formulario). */
+  pickedPoint: PickedPoint | null;
   setTab: (tab: OpsTab) => void;
+  setPickingOnMap: (picking: boolean) => void;
+  setPickedPoint: (point: PickedPoint | null) => void;
   loadOrders: (status?: ServiceOrderStatus) => Promise<void>;
   cancelOrder: (id: string) => Promise<void>;
   removeOrder: (id: string) => Promise<void>;
@@ -20,11 +26,17 @@ export const useOpsStore = create<OpsState>((set, get) => ({
   tab: 'ordenes',
   orders: [],
   ordersLoading: false,
+  pickingOnMap: false,
+  pickedPoint: null,
 
   setTab: (tab) => {
     set({ tab });
     if (tab === 'ordenes') void get().loadOrders();
   },
+
+  setPickingOnMap: (picking) => set({ pickingOnMap: picking }),
+
+  setPickedPoint: (point) => set({ pickedPoint: point }),
 
   loadOrders: async (status) => {
     set({ ordersLoading: true });
