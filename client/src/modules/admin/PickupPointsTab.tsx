@@ -2,6 +2,7 @@ import { FormEvent, useState } from 'react';
 import { pickupPointsApi } from '../../lib/api';
 import { usePickupStore } from '../../store/pickup';
 import type { PickupPoint } from '../../types';
+import { PickupPointMapPicker } from './PickupPointMapPicker';
 
 const INPUT =
   'w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-800 outline-none focus:border-emerald-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100';
@@ -89,6 +90,29 @@ export function PickupPointsTab() {
     }
   }
 
+  const mapLat = Number(form.lat);
+  const mapLng = Number(form.lng);
+  // El mapa solo se monta con coordenadas validas (evita saltos a 0,0
+  // mientras el administrador edita los campos numericos).
+  const coordsValid =
+    form.lat.trim() !== '' &&
+    form.lng.trim() !== '' &&
+    Number.isFinite(mapLat) &&
+    Number.isFinite(mapLng);
+
+  function handleCoords(lat: number, lng: number) {
+    setForm((current) => ({
+      ...current,
+      lat: lat.toFixed(6),
+      lng: lng.toFixed(6),
+    }));
+  }
+
+  /** Completa la direccion solo si esta vacia (nunca pisa lo escrito). */
+  function handleAddress(label: string) {
+    setForm((current) => (current.address ? current : { ...current, address: label }));
+  }
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
@@ -126,6 +150,14 @@ export function PickupPointsTab() {
             value={form.address}
             onChange={(e) => setForm({ ...form, address: e.target.value })}
           />
+          {coordsValid && (
+            <PickupPointMapPicker
+              lat={mapLat}
+              lng={mapLng}
+              onCoords={handleCoords}
+              onAddress={handleAddress}
+            />
+          )}
           <div className="grid grid-cols-2 gap-2">
             <input
               className={INPUT}
