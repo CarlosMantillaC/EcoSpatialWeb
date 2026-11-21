@@ -46,7 +46,7 @@ export function DashboardPage() {
             type="button"
             onClick={() => setSidePanelHidden(true)}
             title="Ocultar el panel lateral izquierdo"
-            className="pointer-events-auto flex items-center gap-1 self-start rounded-lg border border-slate-200 bg-white/95 px-2 py-1 text-xs font-medium text-slate-600 shadow-lg backdrop-blur hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900/95 dark:text-slate-300 dark:hover:bg-slate-800"
+            className="pointer-events-auto flex w-full items-center justify-center gap-1 rounded-lg border border-slate-200 bg-white/95 px-2 py-1.5 text-xs font-medium text-slate-600 shadow-lg backdrop-blur hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900/95 dark:text-slate-300 dark:hover:bg-slate-800"
           >
             <span aria-hidden="true">&#8249;</span> Ocultar panel
           </button>
@@ -61,7 +61,7 @@ export function DashboardPage() {
           type="button"
           onClick={() => setSidePanelHidden(false)}
           title="Mostrar el panel lateral izquierdo"
-          className="pointer-events-auto absolute left-3 top-20 z-20 rounded-lg border border-slate-200 bg-white/95 px-3 py-2 text-xs font-medium text-slate-600 shadow-lg backdrop-blur hover:bg-slate-100 sm:left-4 dark:border-slate-700 dark:bg-slate-900/95 dark:text-slate-300 dark:hover:bg-slate-800"
+          className="pointer-events-auto absolute left-3 top-20 z-20 flex w-[calc(100%-1.5rem)] max-w-sm items-center justify-center gap-1 rounded-lg border border-slate-200 bg-white/95 px-3 py-2 text-xs font-medium text-slate-600 shadow-lg backdrop-blur hover:bg-slate-100 sm:left-4 dark:border-slate-700 dark:bg-slate-900/95 dark:text-slate-300 dark:hover:bg-slate-800"
         >
           <span aria-hidden="true">&#8250;</span> Panel
         </button>
