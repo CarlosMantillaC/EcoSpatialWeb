@@ -21,6 +21,10 @@ export interface AppConfig {
     origin: string;
   };
   devLoginEnabled: boolean;
+  /** Documentacion OpenAPI en /api/docs (desactivable en produccion). */
+  swagger: {
+    enabled: boolean;
+  };
   simulator: {
     enabled: boolean;
     intervalSeconds: number;
@@ -74,6 +78,11 @@ export default (): AppConfig => ({
   devLoginEnabled:
     (process.env.DEV_LOGIN_ENABLED ?? 'false') === 'true' &&
     (process.env.NODE_ENV ?? 'development') !== 'production',
+  swagger: {
+    // Activo por defecto; SWAGGER_ENABLED=false lo apaga (p. ej. si la
+    // documentacion publica no se quiere exponer en produccion).
+    enabled: process.env.SWAGGER_ENABLED !== 'false',
+  },
   simulator: {
     enabled: (process.env.SIMULATOR_ENABLED ?? 'true') === 'true',
     intervalSeconds: parseInt(process.env.SIMULATOR_INTERVAL_SECONDS ?? '3', 10),

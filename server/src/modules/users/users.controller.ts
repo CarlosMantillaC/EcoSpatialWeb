@@ -8,6 +8,14 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiOkResponse,
+  ApiOperation,
+  ApiParam,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { RolesGuard } from '../../common/roles.guard';
 import { Roles } from '../../common/roles.decorator';
 import { UserRole } from '../../entities/user.entity';
@@ -23,6 +31,13 @@ import { UsersService } from './users.service';
  * desde aqui. El usuario creado inscribe su dispositivo despues con su
  * correo en la pantalla de registro.
  */
+@ApiTags('users')
+@ApiBearerAuth()
+@ApiResponse({ status: 401, description: 'Sin JWT o token invalido/expirado.' })
+@ApiResponse({
+  status: 403,
+  description: 'Rol insuficiente: requiere administrador.',
+})
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(UserRole.ADMIN)
 @Controller('users')
@@ -32,6 +47,10 @@ export class UsersController {
     private readonly auditService: AuditService,
   ) {}
 
+  @ApiOperation({
+    summary: 'Lista usuarios y roles (solo administrador)',
+  })
+  @ApiOkResponse({ description: 'Usuarios con id, email, nombre y rol.' })
   @Get()
   async findAll() {
     const users = await this.usersService.findAll();
@@ -44,6 +63,16 @@ export class UsersController {
     }));
   }
 
+  @ApiOperation({
+    summary: 'Crea un usuario con rol (solo administrador)',
+    description:
+      'Si `role` se omite nace como operadora. El nuevo perfil inscribe su dispositivo despues desde /enroll con este correo.',
+  })
+  @ApiResponse({ status: 201, description: 'Usuario creado.' })
+  @ApiResponse({
+    status: 409,
+    description: 'Ya existe un usuario con ese correo.',
+  })
   @Post()
   async create(@Body() dto: CreateUserDto, @Req() req: { user: RequestUser }) {
     const user = await this.usersService.createWithRole({
@@ -67,6 +96,12 @@ export class UsersController {
     };
   }
 
+  @ApiOperation({
+    summary: 'Cambia el rol de un usuario (solo administrador)',
+  })
+  @ApiParam({ name: 'id', description: 'UUID del usuario.' })
+  @ApiOkResponse({ description: 'Usuario con el rol actualizado.' })
+  @ApiResponse({ status: 404, description: 'No existe ese usuario.' })
   @Patch(':id/role')
   async updateRole(
     @Param('id') id: string,

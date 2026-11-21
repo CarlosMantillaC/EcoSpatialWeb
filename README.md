@@ -234,6 +234,16 @@ Al llegar al destino el servicio **se completa solo** y aparece el aviso "Servic
 - **Reportes**: KPIs del periodo (servicios completados, distancia total, tiempo promedio, tasa de éxito, órdenes pendientes, flota libre), gráfica de servicios por día, vehículos destacados y **exportación CSV** del historial de despachos.
 - **Auditoría**: bitácora de acciones de los operadores autenticados (aprobar/cancelar despachos, crear/editar órdenes, vehículos y conductores) con usuario, entidad y fecha.
 
+## Documentación OpenAPI (Swagger)
+
+La API publica su documentación en **`/api/docs`** (UI Swagger) y el documento crudo en **`/api/docs-json`** (o `/api/docs-yaml`):
+
+- **37 rutas / 49 operaciones**, agrupadas en 12 tags (`auth`, `vehicles`, `drivers`, `pickup-points`, `users`, `orders`, `dispatch`, `events`, `alerts`, `reports`, `audit`, `geocode`).
+- Cada operación documenta `summary`, parámetros de path/query, cuerpo (schemas generados automáticamente por el plugin `@nestjs/swagger` desde los DTO `class-validator` y las JSDoc), respuestas esperadas y **el rol requerido**: los endpoints con JWT muestran `401` y los restringidos por rol, su `403` (administrador u operadora).
+- El botón **Authorize** de la UI acepta el JWT de `/api/auth/login/verify` o `/api/auth/dev/login`; `persistAuthorization` lo recuerda entre recargas. El stream SSE admite además el token por query (`?token=`) porque `EventSource` no manda headers.
+- Se genera en el arranque desde `server/src/main.ts`; los schemas salen del plugin configurado en `server/nest-cli.json` (por eso el build usa `nest build`, no `tsc` a pelo).
+- Para no exponerla (p. ej. en producción) define **`SWAGGER_ENABLED=false`**.
+
 ## API principal
 
 | Método | Ruta | Descripción |

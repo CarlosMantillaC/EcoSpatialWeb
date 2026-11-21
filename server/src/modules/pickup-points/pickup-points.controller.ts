@@ -9,6 +9,15 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiOkResponse,
+  ApiOperation,
+  ApiParam,
+  ApiQuery,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { RolesGuard } from '../../common/roles.guard';
 import { Roles } from '../../common/roles.decorator';
 import { UserRole } from '../../entities/user.entity';
@@ -23,6 +32,9 @@ import { PickupPointsService } from './pickup-points.service';
  * (las operadoras los necesitan para elegir/sugerir recogida); alta y
  * edicion solo para el administrador.
  */
+@ApiTags('pickup-points')
+@ApiBearerAuth()
+@ApiResponse({ status: 401, description: 'Sin JWT o token invalido/expirado.' })
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('pickup-points')
 export class PickupPointsController {
@@ -31,12 +43,38 @@ export class PickupPointsController {
     private readonly auditService: AuditService,
   ) {}
 
+  @ApiOperation({
+    summary: 'Lista las sucursales (todas o solo activas)',
+    description:
+      'Nunca se borran: se desactivan para conservar la trazabilidad de los viajes.',
+  })
+  @ApiQuery({
+    name: 'active',
+    required: false,
+    enum: ['true', 'false'],
+    description: 'Pasa "true" para listar solo las sucursales activas.',
+  })
+  @ApiOkResponse({ description: 'Lista de sucursales.' })
   @Get()
   findAll(@Query('active') active?: string) {
     return this.pickupPointsService.findAll(active === 'true');
   }
 
   @Roles(UserRole.ADMIN)
+  @ApiOperation({
+    summary: 'Crea una sucursal (solo administrador)',
+    description:
+      'Las coordenadas deben caer dentro del perimetro urbano de Cucuta.',
+  })
+  @ApiResponse({ status: 201, description: 'Sucursal creada.' })
+  @ApiResponse({
+    status: 403,
+    description: 'Rol insuficiente: requiere administrador.',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Fuera del perimetro de Cucuta o datos invalidos.',
+  })
   @Post()
   async create(
     @Body() dto: CreatePickupPointDto,
@@ -54,6 +92,18 @@ export class PickupPointsController {
   }
 
   @Roles(UserRole.ADMIN)
+  @ApiOperation({
+    summary: 'Edita o desactiva una sucursal (solo administrador)',
+    description:
+      'Para "borrarla" usa `active: false`; nunca se elimina el registro.',
+  })
+  @ApiParam({ name: 'id', description: 'UUID de la sucursal.' })
+  @ApiOkResponse({ description: 'Sucursal actualizada.' })
+  @ApiResponse({
+    status: 403,
+    description: 'Rol insuficiente: requiere administrador.',
+  })
+  @ApiResponse({ status: 404, description: 'No existe esa sucursal.' })
   @Patch(':id')
   async update(
     @Param('id') id: string,
