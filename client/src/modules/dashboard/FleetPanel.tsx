@@ -110,10 +110,19 @@ function VehicleRow({
       ref={rowRef}
       type="button"
       onClick={() => {
+        // Click sobre la fila ya seleccionada: quita la seleccion.
+        if (selected) {
+          selectVehicle(null);
+          return;
+        }
         selectVehicle(vehicle.id);
         flyTo?.(vehicle.lat, vehicle.lng, 16);
       }}
-      title="Ver este vehiculo en el mapa"
+      title={
+        selected
+          ? 'Quitar la seleccion de este vehiculo'
+          : 'Ver este vehiculo en el mapa'
+      }
       className={`w-full rounded-xl border p-2 text-left transition ${
         selected
           ? 'border-blue-500 bg-blue-50 dark:border-blue-400 dark:bg-blue-950/40'

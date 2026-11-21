@@ -106,7 +106,8 @@ function VehicleMarker({
       position={[vehicle.lat, vehicle.lng]}
       icon={selected ? SELECTED_ICONS[vehicle.status] : ICONS[vehicle.status]}
       eventHandlers={{
-        click: () => selectVehicle(vehicle.id),
+        // Click sobre el marcador ya seleccionado: quita la seleccion.
+        click: () => selectVehicle(selected ? null : vehicle.id),
       }}
     >
       <Popup>
