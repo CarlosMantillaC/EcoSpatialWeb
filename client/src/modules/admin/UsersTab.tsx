@@ -1,5 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react';
+import { SearchInput } from '../../components/SearchInput';
 import { usersApi } from '../../lib/api';
+import { matchesSearch } from '../../lib/search';
 import { useAuthStore } from '../../store/auth';
 import type { AdminUser, UserRole } from '../../types';
 
@@ -24,6 +26,8 @@ export function UsersTab() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // Busqueda por nombre, correo o rol.
+  const [query, setQuery] = useState('');
   const [form, setForm] = useState({
     name: '',
     email: '',
@@ -86,11 +90,15 @@ export function UsersTab() {
     }
   }
 
+  const visibleUsers = users.filter((user) =>
+    matchesSearch(query, user.name, user.email, ROLE_LABEL[user.role]),
+  );
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-xs text-slate-500 dark:text-slate-400">
-          {users.length} usuario(s)
+          {visibleUsers.length} usuario(s)
         </p>
         <button
           type="button"
@@ -100,6 +108,12 @@ export function UsersTab() {
           {showForm ? 'Cerrar' : 'Nuevo usuario'}
         </button>
       </div>
+
+      <SearchInput
+        value={query}
+        onChange={setQuery}
+        placeholder="Buscar nombre, correo, rol..."
+      />
 
       {error && (
         <p className="rounded-lg bg-red-50 p-2 text-xs text-red-700 dark:bg-red-950/40 dark:text-red-300">
@@ -150,7 +164,7 @@ export function UsersTab() {
       )}
 
       <div className="space-y-1.5">
-        {users.map((user) => (
+        {visibleUsers.map((user) => (
           <div
             key={user.id}
             className="rounded-xl border border-slate-200 p-2 dark:border-slate-700"
@@ -185,6 +199,11 @@ export function UsersTab() {
         {loading && users.length === 0 && (
           <p className="text-xs text-slate-500 dark:text-slate-400">
             Cargando...
+          </p>
+        )}
+        {!loading && users.length > 0 && visibleUsers.length === 0 && (
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Ningun usuario coincide con la busqueda.
           </p>
         )}
       </div>

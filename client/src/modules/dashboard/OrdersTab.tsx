@@ -1,6 +1,8 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { SearchInput } from '../../components/SearchInput';
 import { geocodeApi, ordersApi } from '../../lib/api';
+import { matchesSearch } from '../../lib/search';
 import { useFleetStore } from '../../store/fleet';
 import { useOpsStore } from '../../store/ops';
 import { usePickupStore } from '../../store/pickup';
@@ -73,6 +75,8 @@ export function OrdersTab() {
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Busqueda por cliente, producto, destino, sucursal o estado.
+  const [query, setQuery] = useState('');
   const [orderToDelete, setOrderToDelete] = useState<ServiceOrder | null>(null);
   const [orderToCancel, setOrderToCancel] = useState<ServiceOrder | null>(null);
   const [suggestions, setSuggestions] = useState<GeocodeSuggestion[]>([]);
@@ -266,11 +270,28 @@ export function OrdersTab() {
     }
   }
 
+  const pickupName = (order: ServiceOrder) =>
+    pickupPoints.find((point) => point.id === order.pickupPointId)?.name;
+
+  const visibleOrders = orders.filter((order) =>
+    matchesSearch(
+      query,
+      order.clientName,
+      order.contact,
+      order.productLabel,
+      order.destLabel,
+      pickupName(order),
+      order.status,
+      order.priority,
+      order.notes,
+    ),
+  );
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-xs text-slate-500 dark:text-slate-400">
-          {orders.length} orden(es)
+          {visibleOrders.length} orden(es)
         </p>
         <button
           type="button"
@@ -280,6 +301,12 @@ export function OrdersTab() {
           {showForm ? 'Cerrar' : 'Nueva orden'}
         </button>
       </div>
+
+      <SearchInput
+        value={query}
+        onChange={setQuery}
+        placeholder="Buscar cliente, producto, destino..."
+      />
 
       {error && (
         <p className="rounded-lg bg-red-50 p-2 text-xs text-red-700 dark:bg-red-950/40 dark:text-red-300">
@@ -469,7 +496,7 @@ export function OrdersTab() {
         <p className="text-xs text-slate-500 dark:text-slate-400">Cargando...</p>
       )}
 
-      {orders.map((order) => (
+      {visibleOrders.map((order) => (
         <div
           key={order.id}
           className="rounded-xl border border-slate-200 p-2 dark:border-slate-700"
@@ -537,6 +564,12 @@ export function OrdersTab() {
       {!loading && orders.length === 0 && (
         <p className="text-xs text-slate-500 dark:text-slate-400">
           No hay ordenes registradas. Crea la primera con "Nueva orden".
+        </p>
+      )}
+
+      {!loading && orders.length > 0 && visibleOrders.length === 0 && (
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          Ninguna orden coincide con la busqueda.
         </p>
       )}
 

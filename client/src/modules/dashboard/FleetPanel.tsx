@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useFleetStore, type FleetFilter } from '../../store/fleet';
 import { useMapStore } from '../../store/map';
 import { useAuthStore } from '../../store/auth';
+import { SearchInput } from '../../components/SearchInput';
+import { matchesSearch } from '../../lib/search';
 import type { ActiveDispatch, Vehicle } from '../../types';
 import { NewVehicleForm } from './NewVehicleForm';
 
@@ -161,12 +163,28 @@ export function FleetPanel() {
   const refresh = useFleetStore((state) => state.refresh);
   const role = useAuthStore((state) => state.user?.role);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  // Busqueda por placa, conductor, tipo de carga o estado.
+  const [query, setQuery] = useState('');
 
   // Alta de vehiculos: solo el administrador (gestion de maestros).
   const isAdmin = role === 'admin';
 
   const dispatchByVehicle = new Map(
     activeDispatches.map((view) => [view.vehicle.id, view]),
+  );
+
+  const visibleVehicles = vehicles.filter((vehicle) =>
+    matchesSearch(
+      query,
+      vehicle.plate,
+      vehicle.driverName,
+      vehicle.cargoType,
+      vehicle.status,
+    ),
+  );
+
+  const visibleDispatches = activeDispatches.filter((view) =>
+    matchesSearch(query, view.vehicle.plate, view.vehicle.driverName),
   );
 
   return (
@@ -266,13 +284,21 @@ export function FleetPanel() {
         ))}
       </div>
 
-      {activeDispatches.length > 0 && (
+      <div className="mt-3">
+        <SearchInput
+          value={query}
+          onChange={setQuery}
+          placeholder="Buscar placa, conductor, carga..."
+        />
+      </div>
+
+      {visibleDispatches.length > 0 && (
         <div className="mt-3">
           <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
             En ruta · con despacho
           </p>
           <div className="space-y-1.5">
-            {activeDispatches.map((view) => (
+            {visibleDispatches.map((view) => (
               <OnRouteRow key={view.dispatch.id} view={view} />
             ))}
           </div>
@@ -281,15 +307,17 @@ export function FleetPanel() {
 
       <div className="mt-3">
         <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-          Vehiculos · {vehicles.length}
+          Vehiculos · {visibleVehicles.length}
         </p>
         <div className="max-h-64 space-y-1.5 overflow-y-auto pr-1">
-          {vehicles.length === 0 && (
+          {visibleVehicles.length === 0 && (
             <p className="rounded-lg bg-slate-50 p-2 text-xs text-slate-400 dark:bg-slate-800/60 dark:text-slate-500">
-              Sin vehiculos con este filtro.
+              {vehicles.length === 0
+                ? 'Sin vehiculos con este filtro.'
+                : 'Sin coincidencias para la busqueda.'}
             </p>
           )}
-          {vehicles.map((vehicle) => (
+          {visibleVehicles.map((vehicle) => (
             <VehicleRow
               key={vehicle.id}
               vehicle={vehicle}

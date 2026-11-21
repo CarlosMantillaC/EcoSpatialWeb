@@ -1,5 +1,7 @@
 import { FormEvent, useRef, useState } from 'react';
+import { SearchInput } from '../../components/SearchInput';
 import { pickupPointsApi } from '../../lib/api';
+import { matchesSearch } from '../../lib/search';
 import { usePickupStore } from '../../store/pickup';
 import type { PickupPoint } from '../../types';
 import { PickupPointMapPicker } from './PickupPointMapPicker';
@@ -27,6 +29,8 @@ export function PickupPointsTab() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Busqueda por nombre, direccion o coordenadas.
+  const [query, setQuery] = useState('');
 
   function openCreate() {
     setEditing(null);
@@ -120,11 +124,21 @@ export function PickupPointsTab() {
     setForm((current) => ({ ...current, address: label }));
   }
 
+  const visiblePoints = allPoints.filter((point) =>
+    matchesSearch(
+      query,
+      point.name,
+      point.address,
+      point.lat.toFixed(5),
+      point.lng.toFixed(5),
+    ),
+  );
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-xs text-slate-500 dark:text-slate-400">
-          {allPoints.length} sucursal(es) · {allPoints.filter((p) => p.active).length}{' '}
+          {visiblePoints.length} sucursal(es) · {allPoints.filter((p) => p.active).length}{' '}
           activas
         </p>
         <button
@@ -135,6 +149,12 @@ export function PickupPointsTab() {
           {showForm ? 'Cerrar' : 'Nueva sucursal'}
         </button>
       </div>
+
+      <SearchInput
+        value={query}
+        onChange={setQuery}
+        placeholder="Buscar sucursal, direccion..."
+      />
 
       {error && (
         <p className="rounded-lg bg-red-50 p-2 text-xs text-red-700 dark:bg-red-950/40 dark:text-red-300">
@@ -208,7 +228,7 @@ export function PickupPointsTab() {
       )}
 
       <div className="space-y-1.5">
-        {allPoints.map((point) => (
+        {visiblePoints.map((point) => (
           <div
             key={point.id}
             className="rounded-xl border border-slate-200 p-2 dark:border-slate-700"
@@ -254,6 +274,11 @@ export function PickupPointsTab() {
         {allPoints.length === 0 && (
           <p className="text-xs text-slate-500 dark:text-slate-400">
             No hay sucursales registradas.
+          </p>
+        )}
+        {allPoints.length > 0 && visiblePoints.length === 0 && (
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Ninguna sucursal coincide con la busqueda.
           </p>
         )}
       </div>

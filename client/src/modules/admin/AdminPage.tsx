@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AppHeader } from '../../components/AppHeader';
+import { SearchInput } from '../../components/SearchInput';
+import { matchesSearch } from '../../lib/search';
 import { useFleetStore } from '../../store/fleet';
 import { usePickupStore } from '../../store/pickup';
 import { DriversTab } from '../dashboard/DriversTab';
@@ -20,16 +22,28 @@ function VehiclesTab() {
   const vehicles = useFleetStore((state) => state.allVehicles);
   const loadVehicles = useFleetStore((state) => state.loadVehicles);
   const [showForm, setShowForm] = useState(false);
+  // Busqueda por placa, conductor o tipo de carga.
+  const [query, setQuery] = useState('');
 
   useEffect(() => {
     void loadVehicles('all');
   }, [loadVehicles]);
 
+  const visibleVehicles = vehicles.filter((vehicle) =>
+    matchesSearch(
+      query,
+      vehicle.plate,
+      vehicle.driverName,
+      vehicle.cargoType,
+      vehicle.status,
+    ),
+  );
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-xs text-slate-500 dark:text-slate-400">
-          {vehicles.length} vehiculo(s)
+          {visibleVehicles.length} vehiculo(s)
         </p>
         <button
           type="button"
@@ -40,6 +54,12 @@ function VehiclesTab() {
         </button>
       </div>
 
+      <SearchInput
+        value={query}
+        onChange={setQuery}
+        placeholder="Buscar placa, conductor, carga..."
+      />
+
       {showForm && (
         <NewVehicleForm
           onCreated={() => setShowForm(false)}
@@ -48,7 +68,7 @@ function VehiclesTab() {
       )}
 
       <div className="max-h-96 space-y-1.5 overflow-y-auto pr-1">
-        {vehicles.map((vehicle) => (
+        {visibleVehicles.map((vehicle) => (
           <div
             key={vehicle.id}
             className="rounded-xl border border-slate-200 p-2 dark:border-slate-700"
@@ -67,6 +87,13 @@ function VehiclesTab() {
             </p>
           </div>
         ))}
+        {visibleVehicles.length === 0 && (
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            {vehicles.length === 0
+              ? 'Sin vehiculos registrados.'
+              : 'Ningun vehiculo coincide con la busqueda.'}
+          </p>
+        )}
       </div>
     </div>
   );

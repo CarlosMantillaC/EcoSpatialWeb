@@ -1,6 +1,8 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { SearchInput } from '../../components/SearchInput';
 import { driversApi, vehiclesApi } from '../../lib/api';
+import { matchesSearch } from '../../lib/search';
 import { useFleetStore } from '../../store/fleet';
 import type { Driver, DriverStatus } from '../../types';
 
@@ -32,6 +34,8 @@ export function DriversTab() {
   const [error, setError] = useState<string | null>(null);
   const [driverToDelete, setDriverToDelete] = useState<Driver | null>(null);
   const [driverToDisable, setDriverToDisable] = useState<Driver | null>(null);
+  // Busqueda por nombre, licencia, telefono o placa asignada.
+  const [query, setQuery] = useState('');
   // Error de asignacion por tarjeta de conductor.
   const [assignErrors, setAssignErrors] = useState<Record<string, string>>({});
   const [form, setForm] = useState({ name: '', license: '', phone: '' });
@@ -119,11 +123,25 @@ export function DriversTab() {
     }
   }
 
+  const visibleDrivers = drivers.filter((driver) => {
+    const assigned = vehicles.find(
+      (vehicle) => vehicle.driverId === driver.id,
+    );
+    return matchesSearch(
+      query,
+      driver.name,
+      driver.license,
+      driver.phone,
+      driver.status,
+      assigned?.plate,
+    );
+  });
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-xs text-slate-500 dark:text-slate-400">
-          {drivers.length} conductor(es)
+          {visibleDrivers.length} conductor(es)
         </p>
         <button
           type="button"
@@ -133,6 +151,12 @@ export function DriversTab() {
           {showForm ? 'Cerrar' : 'Nuevo conductor'}
         </button>
       </div>
+
+      <SearchInput
+        value={query}
+        onChange={setQuery}
+        placeholder="Buscar nombre, licencia, placa..."
+      />
 
       {error && (
         <p className="rounded-lg bg-red-50 p-2 text-xs text-red-700 dark:bg-red-950/40 dark:text-red-300">
@@ -178,7 +202,7 @@ export function DriversTab() {
         <p className="text-xs text-slate-500 dark:text-slate-400">Cargando...</p>
       )}
 
-      {drivers.map((driver) => {
+      {visibleDrivers.map((driver) => {
         const assigned = vehicles.find(
           (vehicle) => vehicle.driverId === driver.id,
         );
@@ -272,6 +296,12 @@ export function DriversTab() {
       {!loading && drivers.length === 0 && (
         <p className="text-xs text-slate-500 dark:text-slate-400">
           No hay conductores registrados.
+        </p>
+      )}
+
+      {!loading && drivers.length > 0 && visibleDrivers.length === 0 && (
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          Ningun conductor coincide con la busqueda.
         </p>
       )}
 

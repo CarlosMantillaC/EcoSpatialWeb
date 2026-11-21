@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
+import { SearchInput } from '../../components/SearchInput';
 import { auditApi } from '../../lib/api';
+import { matchesSearch } from '../../lib/search';
 import type { AuditLogEntry } from '../../types';
 
 const ACTION_LABEL: Record<string, string> = {
@@ -23,6 +25,8 @@ const ACTION_LABEL: Record<string, string> = {
 export function AuditTab() {
   const [entries, setEntries] = useState<AuditLogEntry[]>([]);
   const [loading, setLoading] = useState(false);
+  // Busqueda por accion, usuario o entidad tocada.
+  const [query, setQuery] = useState('');
 
   async function load() {
     setLoading(true);
@@ -37,11 +41,22 @@ export function AuditTab() {
     void load();
   }, []);
 
+  const visibleEntries = entries.filter((entry) =>
+    matchesSearch(
+      query,
+      ACTION_LABEL[entry.action] ?? entry.action,
+      entry.action,
+      entry.userEmail,
+      entry.entityType,
+      entry.entityId,
+    ),
+  );
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-xs text-slate-500 dark:text-slate-400">
-          Ultimas {entries.length} acciones
+          Ultimas {visibleEntries.length} acciones
         </p>
         <button
           type="button"
@@ -53,7 +68,13 @@ export function AuditTab() {
         </button>
       </div>
 
-      {entries.map((entry) => (
+      <SearchInput
+        value={query}
+        onChange={setQuery}
+        placeholder="Buscar accion, usuario, entidad..."
+      />
+
+      {visibleEntries.map((entry) => (
         <div
           key={entry.id}
           className="rounded-xl border border-slate-200 p-2 dark:border-slate-700"
@@ -76,6 +97,12 @@ export function AuditTab() {
       {!loading && entries.length === 0 && (
         <p className="text-xs text-slate-500 dark:text-slate-400">
           Sin acciones registradas aun.
+        </p>
+      )}
+
+      {!loading && entries.length > 0 && visibleEntries.length === 0 && (
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          Ninguna accion coincide con la busqueda.
         </p>
       )}
     </div>
