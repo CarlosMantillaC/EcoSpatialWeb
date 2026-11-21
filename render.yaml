@@ -17,6 +17,10 @@ services:
         value: "true"
       - key: JWT_SECRET
         generateValue: true
+      - key: ADMIN_SEED_EMAIL
+        value: admin@ecospatial.com
+      - key: ADMIN_SEED_NAME
+        value: Administrador
       - key: JWT_EXPIRES_IN
         value: 8h
       - key: WEBAUTHN_RP_ID

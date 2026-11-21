@@ -90,12 +90,23 @@ export class BootstrapService implements OnModuleInit {
     await this.seedOrders();
   }
 
-  /** Admin semilla: el unico que nace con rol administrador. */
+  /**
+   * Admin semilla: el unico perfil que nace (o se garantiza) con rol
+   * administrador. El correo declarado en `ADMIN_SEED_EMAIL` es
+   * autoritativo: si un perfil previo con ese correo habia nacido como
+   * operador, se promueve al arrancar.
+   */
   private async seedAdmin() {
     const email = this.config.get<string>('admin.seedEmail')!;
     const name = this.config.get<string>('admin.seedName')!;
     const existing = await this.usersService.findByEmail(email);
-    if (existing) return;
+    if (existing) {
+      if (existing.role !== UserRole.ADMIN) {
+        await this.usersService.updateRole(existing.id, UserRole.ADMIN);
+        this.logger.log(`Perfil ${email} promovido a administrador`);
+      }
+      return;
+    }
     await this.usersService.createWithRole({
       email,
       name,
