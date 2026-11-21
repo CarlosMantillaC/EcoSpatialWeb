@@ -1,4 +1,4 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useRef, useState } from 'react';
 import { pickupPointsApi } from '../../lib/api';
 import { usePickupStore } from '../../store/pickup';
 import type { PickupPoint } from '../../types';
@@ -31,6 +31,7 @@ export function PickupPointsTab() {
   function openCreate() {
     setEditing(null);
     setForm(EMPTY_FORM);
+    addressEditedAt.current = 0;
     setShowForm(true);
     setError(null);
   }
@@ -43,6 +44,7 @@ export function PickupPointsTab() {
       lat: String(point.lat),
       lng: String(point.lng),
     });
+    addressEditedAt.current = 0;
     setShowForm(true);
     setError(null);
   }
@@ -100,6 +102,10 @@ export function PickupPointsTab() {
     Number.isFinite(mapLat) &&
     Number.isFinite(mapLng);
 
+  // Instante de la ultima edicion manual de la direccion: una respuesta
+  // de geocodificacion en vuelo no puede pisar texto escrito a mano.
+  const addressEditedAt = useRef(0);
+
   function handleCoords(lat: number, lng: number) {
     setForm((current) => ({
       ...current,
@@ -108,9 +114,10 @@ export function PickupPointsTab() {
     }));
   }
 
-  /** Completa la direccion solo si esta vacia (nunca pisa lo escrito). */
-  function handleAddress(label: string) {
-    setForm((current) => (current.address ? current : { ...current, address: label }));
+  /** La direccion sigue siempre a la ultima seleccion en el mapa/busqueda. */
+  function handleAddress(label: string, pickedAt: number) {
+    if (pickedAt < addressEditedAt.current) return;
+    setForm((current) => ({ ...current, address: label }));
   }
 
   return (
@@ -148,7 +155,12 @@ export function PickupPointsTab() {
             className={INPUT}
             placeholder="Direccion"
             value={form.address}
-            onChange={(e) => setForm({ ...form, address: e.target.value })}
+            onChange={(e) => {
+              // Edicion manual: protege el texto de respuestas de
+              // geocodificacion que sigan en vuelo.
+              addressEditedAt.current = Date.now();
+              setForm({ ...form, address: e.target.value });
+            }}
           />
           {coordsValid && (
             <PickupPointMapPicker

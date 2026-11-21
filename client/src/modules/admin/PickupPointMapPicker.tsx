@@ -60,8 +60,9 @@ function ClickHandler({
 /**
  * Selector de posicion de una sucursal: busqueda por nombre
  * (geocodificacion restringida a Cucuta) o clic en el mapa. El marcador
- * se puede arrastrar; el padre recibe las coordenadas y la direccion
- * detectada para completar el formulario.
+ * se puede arrastrar. El padre recibe las coordenadas y la direccion
+ * detectada (con el instante de la seleccion, para que una edicion
+ * manual posterior no sea pisada por una respuesta en vuelo).
  */
 export function PickupPointMapPicker({
   lat,
@@ -72,7 +73,7 @@ export function PickupPointMapPicker({
   lat: number;
   lng: number;
   onCoords: (lat: number, lng: number) => void;
-  onAddress: (label: string) => void;
+  onAddress: (label: string, pickedAt: number) => void;
 }) {
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<GeocodeSuggestion[]>([]);
@@ -100,18 +101,23 @@ export function PickupPointMapPicker({
     setSuggestions([]);
     setQuery(suggestion.label.split(',')[0]);
     onCoords(suggestion.lat, suggestion.lng);
-    onAddress(shortLabel(suggestion.label));
+    onAddress(shortLabel(suggestion.label), Date.now());
+  }
+
+  /** Direccion de un punto elegido en el mapa (clic o arrastre). */
+  function resolveAddress(pickedLat: number, pickedLng: number) {
+    const pickedAt = Date.now();
+    geocodeApi
+      .reverse(pickedLat, pickedLng)
+      .then((result) => {
+        if (result.label) onAddress(shortLabel(result.label), pickedAt);
+      })
+      .catch(() => undefined);
   }
 
   function pickOnMap(pickedLat: number, pickedLng: number) {
     onCoords(pickedLat, pickedLng);
-    // Direccion detectada (el padre solo la usa si el campo esta vacio).
-    geocodeApi
-      .reverse(pickedLat, pickedLng)
-      .then((result) => {
-        if (result.label) onAddress(shortLabel(result.label));
-      })
-      .catch(() => undefined);
+    resolveAddress(pickedLat, pickedLng);
   }
 
   function handleSearchSubmit(event: FormEvent) {
@@ -179,6 +185,7 @@ export function PickupPointMapPicker({
             dragend: (event) => {
               const point = event.target.getLatLng();
               onCoords(point.lat, point.lng);
+              resolveAddress(point.lat, point.lng);
             },
           }}
         />
