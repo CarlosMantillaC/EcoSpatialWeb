@@ -24,6 +24,7 @@ El registro público (biometría) crea operadores; los administradores se crean 
 | Backend | NestJS + TypeORM |
 | Base de datos | PostgreSQL 16 (Docker Compose) |
 | Semántica | Serialización JSON-LD de vehículos y despachos |
+| Tiempo real | SSE (EventSource) con polling de respaldo (12 s) |
 
 ## Requisitos
 
@@ -82,7 +83,7 @@ En **Linux** no existe una API de sistema para WebAuthn, así que Chrome/Edge no
 
 #### Acceso de demostración (solo desarrollo)
 
-Con `DEV_LOGIN_ENABLED=true` (valor por defecto en `.env.example`) aparece en el login una sección para entrar con solo un correo, sin biometría. Está pensada para demos del MVP en equipos sin autenticador.
+Con `DEV_LOGIN_ENABLED=true` (valor por defecto en `.env.example`) aparece en el login una sección para entrar con solo un correo, sin biometría. Está pensada para demos del prototipo en equipos sin autenticador.
 
 - Se desactiva automáticamente si `NODE_ENV=production`.
 - Crea el usuario si no existe y emite un JWT normal.
@@ -182,13 +183,13 @@ Al llegar al destino el servicio **se completa solo** y aparece el aviso "Servic
 
 > El botón **Ocultar ruta** y el comando de voz "limpiar pantalla" solo ocultan la ruta en pantalla; el despacho sigue activo y se puede completar, cancelar o volver a mostrar con **Mostrar ruta**.
 
-## Operación (MVP)
+## Operación (prototipo)
 
 ### Roles y consolas
 
 - **Consola de administración** (rol `admin`): pestañas **Puntos de recogida**, **Vehículos**, **Conductores** y **Usuarios**. Sin mapa de despacho.
 - **Dashboard de la operadora** (rol `operator`): mapa en vivo, panel Flota (solo lectura), panel Despacho, Órdenes, Reportes, Auditoría y control por voz.
-- **Admin semilla**: al arrancar se crea el perfil `ADMIN_SEED_EMAIL` (por defecto `admin@ecospatial.local`) con rol administrador si no existe. Desde su sesión se crean usuarios con rol (operadora o administrador); el usuario creado inscribe después su dispositivo biométrico con el mismo correo en la pantalla de registro.
+- **Admin semilla**: al arrancar se crea el perfil `ADMIN_SEED_EMAIL` (por defecto `admin@ecospatial.com`, autoritativo: crea o promueve el perfil al arrancar) con rol administrador si no existe. Desde su sesión se crean usuarios con rol (operadora o administrador); el usuario creado inscribe después su dispositivo biométrico con el mismo correo en la pantalla de registro.
 - El registro público siempre crea **operadores**. Solo un admin puede crear otros admins (y no puede quitarse el rol si es el único admin).
 - Endpoints: `POST/PATCH/DELETE` de vehículos, conductores, puntos de recogida y usuarios son **solo admin**; crear/completar/cancelar despachos y órdenes es **solo operadora** (el admin no despacha).
 
@@ -206,6 +207,10 @@ Al llegar al destino el servicio **se completa solo** y aparece el aviso "Servic
 - Flujo formal: **Nueva orden → Despachar** abre la vista previa con los datos del envío (recogida, producto, tipo de carga) y al **Aprobar viaje** la orden queda `asignada` con trazabilidad `orden → despacho`.
 - Al completar el servicio la orden pasa a `completada`; si el despacho se **cancela**, la orden **vuelve a la cola** para reasignarla.
 - Los destinos se validan contra el perímetro urbano de Cúcuta.
+
+### Listas con búsqueda
+
+- Todas las listas principales —**flota, órdenes, sucursales, usuarios y auditoría**— incluyen una **barra de búsqueda con filtro en vivo** (placa/conductor/carga, cliente/producto/destino, nombre/correo/rol, acción/entidad...).
 
 ### Conductores
 
@@ -231,7 +236,7 @@ Al llegar al destino el servicio **se completa solo** y aparece el aviso "Servic
 
 ### Reportes y auditoría
 
-- **Reportes**: KPIs del periodo (servicios completados, distancia total, tiempo promedio, tasa de éxito, órdenes pendientes, flota libre), gráfica de servicios por día, vehículos destacados y **exportación CSV** del historial de despachos.
+- **Reportes**: KPIs del periodo (servicios completados, distancia total, tiempo promedio, tasa de éxito, órdenes pendientes, flota libre), gráfica de servicios por día, vehículos destacados y **exportación CSV** del historial de despachos (con recogida, producto, cantidad y tipo de carga).
 - **Auditoría**: bitácora de acciones de los operadores autenticados (aprobar/cancelar despachos, crear/editar órdenes, vehículos y conductores) con usuario, entidad y fecha.
 
 ## Documentación OpenAPI (Swagger)
@@ -289,6 +294,7 @@ La API publica su documentación en **`/api/docs`** (UI Swagger) y el documento 
 | GET | `/api/audit` | Bitácora de auditoría (`?action=&limit=`) |
 | GET | `/api/geocode` | Búsqueda de lugares por nombre en Cúcuta (`?q=&limit=`) |
 | GET | `/api/geocode/reverse` | Nombre legible de un punto (`?lat=&lng=`) |
+| GET | `/api/docs` · `/api/docs-json` | Documentación OpenAPI (Swagger UI; `SWAGGER_ENABLED`) |
 
 ## Estructura
 
@@ -299,15 +305,16 @@ EcoSpatialWeb/
 │     ├─ components/          # Header, ThemeToggle, NotificationBell
 │     ├─ lib/                 # api, webauthn, fleetStream (SSE)
 │     ├─ modules/
+│     │  ├─ admin/            # Consola del administrador (sucursales, vehiculos, usuarios)
 │     │  ├─ auth/             # Login, Enroll, ProtectedRoute, inactividad
 │     │  ├─ dashboard/        # Paneles de flota, despacho y operación
 │     │  │                    #   (Ordenes, Conductores, Reportes, Auditoria)
 │     │  ├─ map/              # Leaflet, marcadores, ruta, tráfico
 │     │  └─ voice/            # Web Speech API + diccionario
-│     └─ store/               # Zustand (auth, fleet, alerts, ops, theme, map)
+│     └─ store/               # Zustand (auth, fleet, alerts, ops, pickup, theme, map)
 └─ server/
    └─ src/
-      ├─ entities/            # User, Credential, Vehicle, Driver, Dispatch,
+      ├─ entities/            # User, Credential, Vehicle, Driver, PickupPoint, Dispatch,
       │                       #   ServiceOrder, Alert, AuditLog
       ├─ modules/
       │  ├─ auth/             # WebAuthn + JWT
@@ -322,6 +329,8 @@ EcoSpatialWeb/
       │  ├─ geocoding/        # Busqueda/reversa de lugares (Nominatim)
       │  ├─ events/           # Stream SSE de estado de flota
       │  ├─ routing/          # Cliente OSRM
+      │  ├─ pickup-points/    # Sucursales de recogida (alta solo admin)
+      │  ├─ bootstrap/        # Siembra admin, sucursales y ordenes demo
       │  └─ simulator/        # Movimiento de flota + auto-completado
       └─ semantic/            # JSON-LD
 ```
@@ -332,6 +341,8 @@ EcoSpatialWeb/
 - El contador de firma se actualiza en cada login para mitigar replay.
 - JWT con expiración (`JWT_EXPIRES_IN`, por defecto `8h`).
 - Cierre automático de sesión tras **5 minutos de inactividad** en el frontend.
+- **Autorización por rol:** endpoints de gestión (vehículos, conductores, sucursales, usuarios) **solo administrador**; despachos y órdenes **solo operadora**; cualquier desajuste responde `403` (guard `@Roles`).
+- **Trazabilidad:** cada acción sensible queda en la **bitácora de auditoría** (usuario, acción, entidad y fecha).
 
 ## Despliegue en Render (plan gratuito)
 
@@ -355,10 +366,11 @@ Notas del plan gratuito:
 - Mantén **una sola instancia** del Web Service: los challenges de WebAuthn viven en memoria.
 - `WEBAUTHN_RP_ID` debe ser el subdominio del frontend (`onrender.com` está en la Public Suffix List, no puede usarse como RP ID).
 
-## Notas y limitaciones (MVP)
+## Notas y limitaciones (prototipo)
 
 - La telemetría es **simulada** (no hay app móvil de conductores).
 - OSRM público es un servidor demo con límites de uso; para producción conviene auto-alojarlo.
 - El tráfico es simulado.
-- `synchronize: true` está activo fuera de producción; para producción usa migraciones.
+- `synchronize: true` está activo **también en producción** (el blueprint define `DB_SYNCHRONIZE=true`); para producción real conviene migraciones TypeORM versionadas.
+- Una base vacía se siembra con **datos de demostración** (sucursales, órdenes de ejemplo y flota simulada) para poder probar el flujo completo.
 - La biometría depende del hardware del operador; el PIN del sistema operativo sirve como contingencia.
