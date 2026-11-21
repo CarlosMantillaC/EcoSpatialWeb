@@ -8,12 +8,23 @@ export type VoiceCommandId =
   | 'zoom_out'
   | 'show_free'
   | 'show_route'
+  | 'show_unassigned'
+  | 'show_unavailable'
+  | 'show_markers'
   | 'clear'
+  | 'route_show'
+  | 'route_hide'
   | 'show_orders'
-  | 'show_drivers'
   | 'show_reports'
   | 'show_audit'
-  | 'show_unassigned';
+  | 'refresh_fleet'
+  | 'panel_hide'
+  | 'panel_show'
+  | 'dispatch_preview'
+  | 'dispatch_approve'
+  | 'dispatch_complete'
+  | 'dispatch_discard'
+  | 'show_all';
 
 export interface VoiceCommandDefinition {
   id: VoiceCommandId;
@@ -21,6 +32,12 @@ export interface VoiceCommandDefinition {
   phrases: string[];
 }
 
+/**
+ * Diccionario de comandos. El orden importa: matchCommand() ordena las
+ * frases de mas larga a mas corta y, a igualdad, respeta este orden. Por
+ * eso show_all va el ultimo: "mostrar vehiculos en ruta" debe caer en el
+ * filtro en_ruta y no en "mostrar todos".
+ */
 export const VOICE_COMMANDS: VoiceCommandDefinition[] = [
   {
     id: 'traffic_on',
@@ -44,7 +61,7 @@ export const VOICE_COMMANDS: VoiceCommandDefinition[] = [
   {
     id: 'show_free',
     label: 'Mostrar disponibles',
-    phrases: ['mostrar disponibles', 'vehiculos libres', 'disponibles'],
+    phrases: ['mostrar disponibles', 'vehiculos disponibles', 'disponibles'],
   },
   {
     id: 'show_route',
@@ -52,24 +69,43 @@ export const VOICE_COMMANDS: VoiceCommandDefinition[] = [
     phrases: ['mostrar en ruta', 'vehiculos en ruta', 'en ruta'],
   },
   {
-    id: 'clear',
-    label: 'Limpiar pantalla',
-    phrases: ['limpiar pantalla', 'limpiar mapa', 'limpiar'],
-  },
-  {
     id: 'show_unassigned',
     label: 'Mostrar libres',
     phrases: ['mostrar libres', 'vehiculos libres', 'libres'],
   },
   {
+    id: 'show_unavailable',
+    label: 'Mostrar no disponibles',
+    phrases: [
+      'mostrar no disponibles',
+      'vehiculos no disponibles',
+      'no disponibles',
+    ],
+  },
+  {
+    id: 'show_markers',
+    label: 'Mostrar marcadores',
+    phrases: ['mostrar marcadores', 'ver marcadores'],
+  },
+  {
+    id: 'clear',
+    label: 'Limpiar pantalla',
+    phrases: ['limpiar pantalla', 'limpiar mapa', 'limpiar'],
+  },
+  {
+    id: 'route_show',
+    label: 'Mostrar ruta',
+    phrases: ['mostrar ruta', 'ver ruta'],
+  },
+  {
+    id: 'route_hide',
+    label: 'Ocultar ruta',
+    phrases: ['ocultar ruta', 'quitar ruta'],
+  },
+  {
     id: 'show_orders',
     label: 'Mostrar ordenes',
     phrases: ['mostrar ordenes', 'ver ordenes', 'ordenes de servicio'],
-  },
-  {
-    id: 'show_drivers',
-    label: 'Mostrar conductores',
-    phrases: ['mostrar conductores', 'ver conductores', 'conductores'],
   },
   {
     id: 'show_reports',
@@ -80,6 +116,59 @@ export const VOICE_COMMANDS: VoiceCommandDefinition[] = [
     id: 'show_audit',
     label: 'Mostrar auditoria',
     phrases: ['mostrar auditoria', 'ver auditoria', 'auditoria', 'bitacora'],
+  },
+  {
+    id: 'refresh_fleet',
+    label: 'Actualizar flota',
+    phrases: ['actualizar flota', 'refrescar flota', 'refrescar'],
+  },
+  {
+    id: 'panel_hide',
+    label: 'Ocultar panel lateral',
+    phrases: ['ocultar panel', 'cerrar panel'],
+  },
+  {
+    id: 'panel_show',
+    label: 'Mostrar panel lateral',
+    phrases: ['mostrar panel', 'abrir panel'],
+  },
+  {
+    id: 'dispatch_preview',
+    label: 'Calcular viaje',
+    phrases: ['calcular viaje', 'calcular ruta', 'previsualizar viaje'],
+  },
+  {
+    id: 'dispatch_approve',
+    label: 'Aprobar viaje',
+    phrases: ['aprobar viaje', 'confirmar viaje', 'aprobar'],
+  },
+  {
+    id: 'dispatch_complete',
+    label: 'Completar servicio',
+    phrases: [
+      'completar servicio',
+      'completar viaje',
+      'finalizar viaje',
+      'terminar viaje',
+    ],
+  },
+  {
+    id: 'dispatch_discard',
+    label: 'Descartar envio',
+    phrases: ['descartar viaje', 'descartar envio', 'descartar'],
+  },
+  // Ultimo a proposito: gana solo si ninguna frase mas larga encaja.
+  {
+    id: 'show_all',
+    label: 'Mostrar todos',
+    phrases: [
+      'mostrar todos',
+      'todos los vehiculos',
+      'mostrar todo',
+      'mostrar vehiculos',
+      'sin filtro',
+      'quitar filtro',
+    ],
   },
 ];
 

@@ -80,6 +80,8 @@ interface FleetState {
   applyFleetUpdate: (update: FleetUpdate) => void;
   setShowTraffic: (value: boolean) => void;
   clearMarkers: () => void;
+  /** Vuelve a pintar los vehiculos tras un "limpiar pantalla". */
+  showMarkers: () => void;
   /** Paso 1: elige destino en el mapa (abre el formulario del envio). */
   selectDestination: (lat: number, lng: number, label?: string) => void;
   /** Completa el borrador del envio (tipo, producto, recogida). */
@@ -264,6 +266,7 @@ export const useFleetStore = create<FleetState>((set, get) => ({
   setShowTraffic: (value) => set({ showTraffic: value }),
 
   clearMarkers: () => set({ markersVisible: false }),
+  showMarkers: () => set({ markersVisible: true }),
 
   selectDestination: (lat, lng, label) => {
     const { lastDispatch, loading } = get();

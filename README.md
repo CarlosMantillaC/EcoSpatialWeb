@@ -108,20 +108,53 @@ npm run seed -w server
 
 El micrófono se procesa localmente con la Web Speech API (`es-ES`). El diccionario vive en `client/src/modules/voice/commands.ts`.
 
+El control es un **botón flotante abajo a la derecha del mapa** (visible incluso con el panel izquierdo oculto). Hay dos formas de activarlo:
+
+- **Clic**: alterna el modo persistente (sigue escuchando hasta volver a pulsar).
+- **Mantener <kbd>Espacio</kbd>**: estilo *walkie-talkie*; la tecla se ignora cuando el foco está en un campo de texto o en un botón, y al soltarla deja de escuchar. Requiere Chrome / Edge.
+
+### Mapa y visualización
+
 | Comando | Acción |
 |---|---|
 | "mostrar tráfico" / "ocultar tráfico" | Capa de tráfico simulada |
 | "modo oscuro" / "modo claro" | Tema de la interfaz |
 | "centrar mapa" | Vuelve a la coordenada base (Cúcuta) |
 | "acercar" / "alejar" | Zoom del mapa |
+| "mostrar ruta" / "ocultar ruta" | Ruta del despacho activo |
+| "mostrar marcadores" | Vuelve a pintar los vehículos tras limpiar |
+| "limpiar pantalla" | Oculta marcadores y ruta |
+
+### Flota (filtros)
+
+| Comando | Acción |
+|---|---|
+| "mostrar todos" / "quitar filtro" | Sin filtro, flota completa |
 | "mostrar disponibles" | Filtra vehículos `libre` |
+| "mostrar libres" / "vehiculos libres" | Filtra vehículos `sin_conductor` |
 | "mostrar en ruta" | Filtra vehículos `en_ruta` |
-| "mostrar ordenes" / "ver ordenes" | Abre la pestaña Órdenes del panel Operación |
-| "mostrar conductores" | Abre la pestaña Conductores |
-| "mostrar libres" / "vehiculos libres" | Filtra la flota a vehículos Libres (sin conductor) |
+| "mostrar no disponibles" | Filtra vehículos `no_disponible` |
+| "actualizar flota" / "refrescar" | Recarga flota y despachos |
+
+### Panel de operación
+
+| Comando | Acción |
+|---|---|
+| "mostrar ordenes" / "ver ordenes" | Abre la pestaña Órdenes |
 | "mostrar reportes" | Abre la pestaña Reportes |
 | "mostrar auditoria" / "bitacora" | Abre la pestaña Auditoría |
-| "limpiar pantalla" | Oculta marcadores y ruta |
+| "ocultar panel" / "mostrar panel" | Contrae o despliega el panel lateral izquierdo |
+
+### Despacho (3 pasos por voz)
+
+| Comando | Acción |
+|---|---|
+| "calcular viaje" | Llama a `POST /api/dispatch/preview` (no guarda nada) |
+| "aprobar viaje" | Crea el despacho y marca el vehículo `en ruta` |
+| "completar servicio" / "finalizar viaje" | Cierra el servicio en curso |
+| "descartar viaje" | Descarta la vista previa o el destino elegido |
+
+> Los comandos de despacho actúan sobre el servidor; el panel muestra siempre el aviso o el error resultante.
 
 > La capa de "tráfico" es **simulada** (incidencias propias), ya que OpenStreetMap no ofrece tráfico en tiempo real en tiles gratuitos.
 

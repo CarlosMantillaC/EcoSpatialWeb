@@ -52,7 +52,6 @@ export function DashboardPage() {
           </button>
           <FleetPanel />
           <OpsPanel />
-          <VoiceControl />
         </div>
       )}
 
@@ -69,6 +68,14 @@ export function DashboardPage() {
 
       <div className="pointer-events-none absolute right-3 top-20 z-20 w-[calc(100%-1.5rem)] max-w-sm sm:right-4 sm:w-full">
         <DispatchPanel />
+      </div>
+
+      {/* Control de voz fuera de la columna: siempre visible, aun con el panel izquierdo oculto. bottom-9 deja libre la atribucion de Leaflet. */}
+      <div className="pointer-events-none absolute bottom-9 right-3 z-30 flex max-w-sm flex-col items-end gap-2 sm:right-4">
+        <VoiceControl
+          panelHidden={sidePanelHidden}
+          onSetPanelHidden={setSidePanelHidden}
+        />
       </div>
     </div>
   );
