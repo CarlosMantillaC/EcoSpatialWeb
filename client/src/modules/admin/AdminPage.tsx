@@ -117,10 +117,6 @@ export function AdminPage() {
       <AppHeader />
 
       <main className="mx-auto max-w-4xl px-4 py-6">
-        <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
-          Consola de administracion: sucursales, flota, conductores y
-          usuarios. Los despachos los operan las operadoras.
-        </p>
         <div className="mb-4 flex flex-wrap gap-1">
           {TABS.map(({ id, label }) => (
             <button
