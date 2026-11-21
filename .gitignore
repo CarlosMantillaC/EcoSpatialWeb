@@ -28,3 +28,7 @@ Thumbs.db
 
 # test
 coverage/
+
+# manual de usuario (generacion local: docs/manual + scripts/generar-manual.mjs)
+docs/
+scripts/

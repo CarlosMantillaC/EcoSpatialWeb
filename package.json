@@ -13,10 +13,12 @@
     "db:up": "docker compose up -d",
     "db:down": "docker compose down",
     "lint": "npm run lint --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present"
+    "test": "npm run test --workspaces --if-present",
+    "manual": "node scripts/generar-manual.mjs"
   },
   "devDependencies": {
-    "concurrently": "^9.1.2"
+    "concurrently": "^9.1.2",
+    "docx": "^9.16.0"
   },
   "engines": {
     "node": ">=20"
